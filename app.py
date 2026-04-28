@@ -168,6 +168,19 @@ def init_state() -> None:
     if "ratings" not in st.session_state:
         st.session_state.ratings = []
 
+    if "show_how_to_use" not in st.session_state:
+        st.session_state.show_how_to_use = True
+
+
+def normalize_state_types() -> None:
+    # Handles old session formats to prevent cloud/runtime crashes.
+    if not isinstance(st.session_state.favorites, dict):
+        st.session_state.favorites = {}
+    if not isinstance(st.session_state.banners, list):
+        st.session_state.banners = []
+    if not isinstance(st.session_state.ratings, list):
+        st.session_state.ratings = []
+
 
 def cleanup_expired() -> None:
     df = st.session_state.listings
@@ -212,6 +225,7 @@ def safe_html(text: str) -> str:
 
 
 init_state()
+normalize_state_types()
 cleanup_expired()
 
 
@@ -224,6 +238,22 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
+if st.session_state.show_how_to_use:
+    st.info("Welcome! Start here: how to use Biliwaka MarketPlace.")
+    with st.expander("📘 How to use this marketplace", expanded=True):
+        st.markdown(
+            """
+1. Browse listings using search, category, location, and sorting.
+2. Login from the sidebar with phone/email to publish and manage ads.
+3. Create listings (first 4 in 7 days are free; featured ads are paid).
+4. Use WhatsApp/Call buttons to contact vendors quickly.
+5. Rate vendors to build trust and use favorites to save listings.
+"""
+        )
+        if st.button("Got it, hide guide"):
+            st.session_state.show_how_to_use = False
+            st.rerun()
 
 
 st.sidebar.title("Account")
