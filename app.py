@@ -15,76 +15,83 @@ st.markdown("""
     background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
     color: #f4f4f4;
 }
-h1, h2, h3, h4, h5, h6, p {
+h1, h2, h3, h4, h5, h6, p, span {
     color: #f4f4f4 !important;
 }
 .main-title {
     text-align: center;
     color: #ffd700 !important;
-    font-size: 2.6rem;
-    font-weight: 900;
+    font-size: 2.5rem;
+    font-weight: 800;
 }
 .sub-title {
     text-align: center;
     color: #a0aec0 !important;
-    margin-bottom: 20px;
+    margin-bottom: 25px;
 }
-.biz-card {
+.card {
     background: #262626;
     padding: 18px;
     border-radius: 15px;
     margin-bottom: 15px;
     border-left: 5px solid #d4af37;
 }
-.price-tag {
-    color:#ffd700 !important;
-    font-weight:bold;
+.tag {
+    color: #ffd700 !important;
+    font-weight: bold;
 }
-.meta-text {
-    color:#a0aec0 !important;
-    font-size:0.9rem;
-}
-.wa-btn {
-    padding: 10px 15px;
-    background:#25D366;
-    color:white !important;
-    border-radius:8px;
-    text-decoration:none;
-    display:inline-block;
+.btn {
+    background: #25D366;
+    padding: 8px 12px;
+    border-radius: 8px;
+    color: white !important;
+    text-decoration: none;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ----------------------
-# DATA
+# INITIAL DATA
 # ----------------------
 if "df" not in st.session_state:
-    st.session_state.df = pd.DataFrame({
-        "Business Name": [
-            "Elijah Shoe World",
-            "Sarahs Touch Salon"
-        ],
-        "Category": [
-            "Fashion",
-            "Beauty"
-        ],
-        "Product": [
-            "Men Leather Shoes",
-            "Wigs & Braids"
-        ],
-        "Price (UGX)": [
-            120000,
-            "300,000 - 1,500,000"
-        ],
-        "Contact": [
-            "0752694452",
-            "0775998783"
-        ],
-        "Location": [
-            "Kampala",
-            "Nalumunye"
-        ]
-    })
+    st.session_state.df = pd.DataFrame([
+        {
+            "Type": "Product",
+            "Title": "Elijah Leather Shoes",
+            "Category": "Fashion",
+            "Details": "Premium leather men shoes",
+            "Price": "120,000 UGX",
+            "Location": "Kampala",
+            "Contact": "0752694452"
+        },
+        {
+            "Type": "Service",
+            "Title": "Sarahs Touch Salon",
+            "Category": "Beauty",
+            "Details": "Wigs, braids, makeup services",
+            "Price": "300,000 - 1,500,000 UGX",
+            "Location": "Nalumunye",
+            "Contact": "0775998783"
+        },
+        {
+            "Type": "Car",
+            "Title": "Toyota Premio 2015",
+            "Category": "Cars",
+            "Details": "Clean, fuel efficient, automatic",
+            "Price": "25,000,000 UGX",
+            "Location": "Kampala",
+            "Contact": "0701112233"
+        },
+        {
+            "Type": "Property",
+            "Title": "2 Bedroom House for Rent",
+            "Category": "Real Estate",
+            "Details": "Self-contained house in good area",
+            "Price": "800,000 UGX / month",
+            "Location": "Kampala - Kira",
+            "Contact": "0788889990"
+        }
+    ])
 
 df = st.session_state.df
 
@@ -92,46 +99,52 @@ df = st.session_state.df
 # HEADER
 # ----------------------
 st.markdown('<div class="main-title">🏪 Biliwaka MarketSpace</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Discover. Connect. Trade. Uganda’s Marketplace</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Multi-Category Marketplace • Cars • Property • Services • Products</div>', unsafe_allow_html=True)
 
 # ----------------------
-# SEARCH
+# FILTERS
 # ----------------------
-search = st.text_input("🔍 Search marketplace")
+col1, col2 = st.columns(2)
+
+with col1:
+    type_filter = st.selectbox("Filter Type", ["All", "Product", "Service", "Car", "Property"])
+
+with col2:
+    search = st.text_input("Search marketplace")
 
 filtered_df = df.copy()
 
+if type_filter != "All":
+    filtered_df = filtered_df[filtered_df["Type"] == type_filter]
+
 if search:
     filtered_df = filtered_df[
-        filtered_df["Business Name"].str.contains(search, case=False, na=False) |
-        filtered_df["Product"].str.contains(search, case=False, na=False)
+        filtered_df["Title"].str.contains(search, case=False, na=False) |
+        filtered_df["Details"].str.contains(search, case=False, na=False)
     ]
 
 # ----------------------
-# DISPLAY LISTINGS
+# LISTINGS
 # ----------------------
 st.markdown("### 📢 Marketplace Listings")
 
-for _, row in filtered_df.iterrows():
+if filtered_df.empty:
+    st.warning("No listings found.")
+else:
+    for _, row in filtered_df.iterrows():
 
-    # ensure proper WhatsApp format
-    phone = str(row["Contact"]).strip()
+        wa = f"https://wa.me/{row['Contact']}?text=Hello%20I%20am%20interested%20in%20{row['Title']}"
 
-    if phone.startswith("0"):
-        phone = "256" + phone[1:]
-    elif not phone.startswith("256"):
-        phone = "256" + phone
-
-    wa_link = f"https://wa.me/{phone}?text=Hello%20I%20am%20interested%20in%20{row['Product']}"
-
-    st.markdown(f"""
-    <div class="biz-card">
-        <h3>{row['Product']}</h3>
-        <p class="meta-text">🏢 {row['Business Name']} | 📍 {row['Location']}</p>
-        <p class="price-tag">💰 {row['Price (UGX)']}</p>
-        <a class="wa-btn" href="{wa_link}" target="_blank">💬 WhatsApp</a>
-    </div>
-    """, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="card">
+            <h3>{row['Title']}</h3>
+            <p class="tag">[{row['Type']}] • {row['Category']}</p>
+            <p>{row['Details']}</p>
+            <p><b>💰 {row['Price']}</b></p>
+            <p>📍 {row['Location']}</p>
+            <a class="btn" href="{wa}" target="_blank">💬 Contact Seller</a>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ----------------------
 # CREATE LISTING
@@ -141,42 +154,25 @@ st.markdown("## ➕ Create Listing")
 
 with st.form("create_listing"):
 
-    name = st.text_input("Business Name")
-
-    category = st.selectbox("Category", [
-        "Fashion",
-        "Beauty",
-        "Electronics",
-        "Services",
-        "Food",
-        "Car Dealership 🚗",
-        "Real Estate 🏠"
-    ])
-
-    product = st.text_input("Product / Service")
-    price = st.text_input("Price (UGX)")
-    contact = st.text_input("WhatsApp Number (e.g. 077xxxxxxx)")
+    listing_type = st.selectbox("Listing Type", ["Product", "Service", "Car", "Property"])
+    title = st.text_input("Title")
+    category = st.text_input("Category")
+    details = st.text_area("Details / Description")
+    price = st.text_input("Price")
     location = st.text_input("Location")
+    contact = st.text_input("WhatsApp Number")
 
     submit = st.form_submit_button("Publish Listing")
 
     if submit:
-
-        # AUTO FORMAT PHONE
-        phone = contact.strip()
-
-        if phone.startswith("0"):
-            phone = "256" + phone[1:]
-        elif not phone.startswith("256"):
-            phone = "256" + phone
-
         new_row = pd.DataFrame([{
-            "Business Name": name,
+            "Type": listing_type,
+            "Title": title,
             "Category": category,
-            "Product": product,
-            "Price (UGX)": price,
-            "Contact": phone,
-            "Location": location
+            "Details": details,
+            "Price": price,
+            "Location": location,
+            "Contact": contact
         }])
 
         st.session_state.df = pd.concat([st.session_state.df, new_row], ignore_index=True)
@@ -188,4 +184,4 @@ with st.form("create_listing"):
 # FOOTER
 # ----------------------
 st.markdown("---")
-st.markdown("<center style='color:gray'>© 2026 Biliwaka MarketSpace</center>", unsafe_allow_html=True)
+st.markdown("<center style='color:gray'>© 2026 Biliwaka MarketSpace • Uganda Multi-Category Marketplace</center>", unsafe_allow_html=True)
