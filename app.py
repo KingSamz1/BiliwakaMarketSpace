@@ -155,4 +155,23 @@ else:
         wa_link = f"https://wa.me/{row['Contact']}?text=Hello%20I%20saw%20{row['Product']}%20on%20the%20Biliwaka%20MarketHub"
         
         img = row.get("Image URL", "")
-        image_html = f'<img src="{img}" style="width:100%; height:180px; object-fit:cover; border-radius:12px; border: 2px solid #444;">' if pd.notna(img) and img !=
+        image_html = f'<img src="{img}" style="width:100%; height:180px; object-fit:cover; border-radius:12px; border: 2px solid #444;">' if pd.notna(img) and img != "" else '<div style="width:100%; height:180px; background: linear-gradient(135deg, #333 0%, #444 100%); border-radius:12px; border: 2px solid #444; display:flex; align-items:center; justify-content:center; color:#888;"><div style="text-align:center"><span style="📸</span><br><span style="font-size:12px; color:#888;">No Image</span></div></div>'
+        
+        card_html = f"""
+        <div class="biz-card">
+            {image_html}
+            <h3 style="margin-top:10px; color:#f4f4f4;">{row['Product']}</h3>
+            <p class="meta-text">🏢 <b>{row['Business Name']}</b> • 📍 {row['Location']}</p>
+            <p class="price-tag">💰 {format_ugx(row['Price (UGX)'])}</p>
+            <div style="text-align: right; margin-top:15px;">
+                <a href="{wa_link}" target="_blank" class="wa-btn">💬 Order on WhatsApp</a>
+            </div>
+        </div>
+        """
+        st.markdown(card_html, unsafe_allow_html=True)
+
+# ----------------------
+# FOOTER
+# ----------------------
+st.markdown("---")
+st.markdown('<div style="text-align: center; color: #888; font-size: 13px;">© 2026 Biliwaka MarketHub. All rights reserved.</div>', unsafe_allow_html=True)
