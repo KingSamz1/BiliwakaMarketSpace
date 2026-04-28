@@ -4,7 +4,7 @@ import pandas as pd
 # ----------------------
 # CONFIG
 # ----------------------
-st.set_page_config(page_title="MarketSpace", page_icon="🏪", layout="wide")
+st.set_page_config(page_title="Biliwaka MarketSpace", page_icon="🏪", layout="wide")
 
 # ----------------------
 # STYLING
@@ -15,34 +15,26 @@ st.markdown("""
     background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
     color: #f4f4f4;
 }
-h1, h2, h3, h4, h5, h6, p, span, li, label {
+h1, h2, h3, h4, h5, h6, p {
     color: #f4f4f4 !important;
 }
 .main-title {
     text-align: center;
     color: #ffd700 !important;
-    font-size: 2.5rem;
-    font-weight: 800;
+    font-size: 2.6rem;
+    font-weight: 900;
 }
 .sub-title {
     text-align: center;
     color: #a0aec0 !important;
-    margin-bottom: 25px;
+    margin-bottom: 20px;
 }
 .biz-card {
     background: #262626;
-    padding: 20px;
+    padding: 18px;
     border-radius: 15px;
     margin-bottom: 15px;
     border-left: 5px solid #d4af37;
-}
-.wa-btn {
-    padding: 10px 15px;
-    background:#25D366;
-    color:white !important;
-    border-radius:8px;
-    text-decoration:none;
-    display:inline-block;
 }
 .price-tag {
     color:#ffd700 !important;
@@ -52,11 +44,19 @@ h1, h2, h3, h4, h5, h6, p, span, li, label {
     color:#a0aec0 !important;
     font-size:0.9rem;
 }
+.wa-btn {
+    padding: 10px 15px;
+    background:#25D366;
+    color:white !important;
+    border-radius:8px;
+    text-decoration:none;
+    display:inline-block;
+}
 </style>
 """, unsafe_allow_html=True)
 
 # ----------------------
-# INITIAL DATA
+# DATA
 # ----------------------
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame({
@@ -91,13 +91,13 @@ df = st.session_state.df
 # ----------------------
 # HEADER
 # ----------------------
-st.markdown('<div class="main-title">🏪 MarketSpace</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Discover. Connect. Trade.</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🏪 Biliwaka MarketSpace</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Discover. Connect. Trade. Uganda’s Marketplace</div>', unsafe_allow_html=True)
 
 # ----------------------
 # SEARCH
 # ----------------------
-search = st.text_input("🔍 Search listings")
+search = st.text_input("🔍 Search marketplace")
 
 filtered_df = df.copy()
 
@@ -114,18 +114,20 @@ st.markdown("### 📢 Marketplace Listings")
 
 for _, row in filtered_df.iterrows():
 
+    # ensure proper WhatsApp format
     phone = str(row["Contact"]).strip()
 
-    # FIX: convert 07XXXXXXXX → 2567XXXXXXXX
     if phone.startswith("0"):
         phone = "256" + phone[1:]
+    elif not phone.startswith("256"):
+        phone = "256" + phone
 
     wa_link = f"https://wa.me/{phone}?text=Hello%20I%20am%20interested%20in%20{row['Product']}"
 
     st.markdown(f"""
     <div class="biz-card">
         <h3>{row['Product']}</h3>
-        <p class="meta-text">🏢 {row['Business Name']} | 📍 {row['Location']} | 🏷 {row['Category']}</p>
+        <p class="meta-text">🏢 {row['Business Name']} | 📍 {row['Location']}</p>
         <p class="price-tag">💰 {row['Price (UGX)']}</p>
         <a class="wa-btn" href="{wa_link}" target="_blank">💬 WhatsApp</a>
     </div>
@@ -141,17 +143,22 @@ with st.form("create_listing"):
 
     name = st.text_input("Business Name")
 
-    category = st.selectbox(
-        "Category",
-        ["Fashion", "Beauty", "Electronics", "Services", "Food", "Car Dealership", "Real Estate"]
-    )
+    category = st.selectbox("Category", [
+        "Fashion",
+        "Beauty",
+        "Electronics",
+        "Services",
+        "Food",
+        "Car Dealership 🚗",
+        "Real Estate 🏠"
+    ])
 
     product = st.text_input("Product / Service")
     price = st.text_input("Price (UGX)")
-    contact = st.text_input("WhatsApp Number (07XXXXXXXX or 256XXXXXXXX)")
+    contact = st.text_input("WhatsApp Number (e.g. 077xxxxxxx)")
     location = st.text_input("Location")
 
-    submit = st.form_submit_button("Publish")
+    submit = st.form_submit_button("Publish Listing")
 
     if submit:
 
@@ -160,6 +167,8 @@ with st.form("create_listing"):
 
         if phone.startswith("0"):
             phone = "256" + phone[1:]
+        elif not phone.startswith("256"):
+            phone = "256" + phone
 
         new_row = pd.DataFrame([{
             "Business Name": name,
@@ -179,4 +188,4 @@ with st.form("create_listing"):
 # FOOTER
 # ----------------------
 st.markdown("---")
-st.markdown("<center style='color:gray'>© 2026 MarketSpace</center>", unsafe_allow_html=True)
+st.markdown("<center style='color:gray'>© 2026 Biliwaka MarketSpace</center>", unsafe_allow_html=True)
