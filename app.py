@@ -2,12 +2,12 @@ import streamlit as st
 import pandas as pd
 
 # ----------------------
-# CONFIG & PAGE SETUP
+# CONFIG
 # ----------------------
 st.set_page_config(page_title="Biliwaka MarketHub", page_icon="🏪", layout="wide")
 
 # ----------------------
-# STYLING (YOUR ORIGINAL UI)
+# STYLING
 # ----------------------
 st.markdown("""
 <style>
@@ -18,34 +18,22 @@ st.markdown("""
 h1, h2, h3, h4, h5, h6, p, span, li, label {
     color: #f4f4f4 !important;
 }
-input, select, textarea {
-    color: #f4f4f4 !important;
-}
-.stTextInput > div > div {
-    background-color: rgba(42, 42, 42, 0.8) !important;
-    border: 1px solid #444 !important;
-}
-.stSelectbox > div {
-    background-color: rgba(42, 42, 42, 0.8) !important;
-    color: #f4f4f4 !important;
-}
 .main-title {
     text-align: center;
     color: #ffd700 !important;
-    font-weight: 800;
     font-size: 2.5rem;
+    font-weight: 800;
 }
 .sub-title {
     text-align: center;
     color: #a0aec0 !important;
-    font-size: 1.1rem;
-    margin-bottom: 30px;
+    margin-bottom: 25px;
 }
 .biz-card {
     background: #262626;
     padding: 20px;
     border-radius: 15px;
-    margin-bottom: 20px;
+    margin-bottom: 15px;
     border-left: 5px solid #d4af37;
 }
 .wa-btn {
@@ -68,64 +56,37 @@ input, select, textarea {
 """, unsafe_allow_html=True)
 
 # ----------------------
-# INITIAL DATA (YOUR BUSINESSES RESTORED)
+# DATA (UPDATED AS REQUESTED)
 # ----------------------
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame({
         "Business Name": [
             "Elijah Shoe World",
-            "Sarahs Touch Salon",
-            "Biliwaka Shoes",
-            "Kampala Phones",
-            "Fresh Foods UG"
+            "Sarahs Touch Salon"
         ],
         "Category": [
             "Fashion",
-            "Beauty",
-            "Fashion",
-            "Electronics",
-            "Food & Drinks"
+            "Beauty"
         ],
         "Product": [
             "Men Leather Shoes",
-            "Wigs & Braids",
-            "Shoes",
-            "iPhones",
-            "Groceries"
+            "Wigs & Braids"
         ],
         "Price (UGX)": [
             120000,
-            80000,
-            50000,
-            800000,
-            20000
+            "300,000 - 1,500,000"
         ],
         "Contact": [
-            "256752694452",
-            "256780000000",
-            "256712345678",
-            "256701112233",
-            "256778889900"
+            "0752694452",
+            "0775998783"
         ],
         "Location": [
             "Kampala",
-            "Nalumunye",
-            "Kampala",
-            "Kikuubo",
-            "Nakasero"
+            "Nalumunye"
         ]
     })
 
 df = st.session_state.df
-
-# ----------------------
-# HELPERS
-# ----------------------
-def format_ugx(amount):
-    try:
-        return f"UGX {int(amount):,}"
-    except:
-        return amount
 
 # ----------------------
 # HEADER
@@ -134,93 +95,67 @@ st.markdown('<div class="main-title">🏪 Biliwaka MarketHub</div>', unsafe_allo
 st.markdown('<div class="sub-title">Discover. Connect. Trade. Uganda’s Marketplace</div>', unsafe_allow_html=True)
 
 # ----------------------
-# SIDEBAR FILTERS
+# FILTERS
 # ----------------------
-st.sidebar.markdown("## 🔍 Search")
+search = st.text_input("🔍 Search")
 
-search_query = st.sidebar.text_input("Search businesses")
-
-category_filter = st.sidebar.selectbox(
-    "Filter Category",
-    ["All"] + list(df["Category"].unique())
-)
-
-# ----------------------
-# FILTER LOGIC (FIXED)
-# ----------------------
 filtered_df = df.copy()
 
-if search_query:
+if search:
     filtered_df = filtered_df[
-        filtered_df["Product"].str.contains(search_query, case=False, na=False) |
-        filtered_df["Business Name"].str.contains(search_query, case=False, na=False)
+        filtered_df["Business Name"].str.contains(search, case=False, na=False) |
+        filtered_df["Product"].str.contains(search, case=False, na=False)
     ]
-
-if category_filter != "All":
-    filtered_df = filtered_df[filtered_df["Category"] == category_filter]
-
-# ----------------------
-# COUNT DISPLAY
-# ----------------------
-st.markdown(f"### Showing {len(filtered_df)} businesses")
 
 # ----------------------
 # DISPLAY LISTINGS
 # ----------------------
-if filtered_df.empty:
-    st.warning("No businesses found.")
-else:
-    for _, row in filtered_df.iterrows():
+st.markdown("### 📢 Marketplace Listings")
 
-        wa_link = f"https://wa.me/{row['Contact']}?text=Hello%20I%20saw%20your%20{row['Product']}%20on%20Biliwaka%20MarketHub"
+for _, row in filtered_df.iterrows():
 
-        card = f"""
-        <div class="biz-card">
-            <h3>{row['Product']}</h3>
-            <p class="meta-text">🏢 {row['Business Name']} | 📍 {row['Location']}</p>
-            <p class="price-tag">{format_ugx(row['Price (UGX)'])}</p>
-            <a href="{wa_link}" target="_blank" class="wa-btn">💬 Contact on WhatsApp</a>
-        </div>
-        """
+    wa_link = f"https://wa.me/{row['Contact']}?text=Hello%20I%20am%20interested%20in%20{row['Product']}"
 
-        st.markdown(card, unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="biz-card">
+        <h3>{row['Product']}</h3>
+        <p class="meta-text">🏢 {row['Business Name']} | 📍 {row['Location']}</p>
+        <p class="price-tag">💰 {row['Price (UGX)']}</p>
+        <a class="wa-btn" href="{wa_link}" target="_blank">💬 WhatsApp</a>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ----------------------
-# ADD BUSINESS (NOW WORKS LIVE IN SESSION)
+# CREATE LISTING (BOTTOM TAB STYLE)
 # ----------------------
 st.markdown("---")
-st.subheader("➕ Add Your Business")
+st.markdown("## ➕ Create Listing")
 
-with st.form("add_business"):
+with st.form("create_listing"):
 
     name = st.text_input("Business Name")
-    category = st.selectbox("Category", ["Fashion", "Beauty", "Electronics", "Services", "Food & Drinks"])
+    category = st.selectbox("Category", ["Fashion", "Beauty", "Electronics", "Services", "Food"])
     product = st.text_input("Product / Service")
-    price = st.number_input("Price (UGX)", min_value=0)
-    contact = st.text_input("WhatsApp Number (256XXXXXXXXX)")
+    price = st.text_input("Price (UGX)")
+    contact = st.text_input("WhatsApp Number")
     location = st.text_input("Location")
 
-    submit = st.form_submit_button("Add Business")
+    submit = st.form_submit_button("Publish")
 
     if submit:
-        if name and product and contact:
+        new_row = pd.DataFrame([{
+            "Business Name": name,
+            "Category": category,
+            "Product": product,
+            "Price (UGX)": price,
+            "Contact": contact,
+            "Location": location
+        }])
 
-            new_row = pd.DataFrame([{
-                "Business Name": name,
-                "Category": category,
-                "Product": product,
-                "Price (UGX)": price,
-                "Contact": contact,
-                "Location": location
-            }])
+        st.session_state.df = pd.concat([st.session_state.df, new_row], ignore_index=True)
 
-            st.session_state.df = pd.concat([st.session_state.df, new_row], ignore_index=True)
-
-            st.success("✅ Business added successfully!")
-            st.rerun()
-
-        else:
-            st.error("Please fill all required fields")
+        st.success("✅ Listing added successfully!")
+        st.rerun()
 
 # ----------------------
 # FOOTER
