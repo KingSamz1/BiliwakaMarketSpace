@@ -1,8 +1,8 @@
+
 import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-from st_on_hover_tabs import on_hover_tabs
 import re
 
 # ----------------------
