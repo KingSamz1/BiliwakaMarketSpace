@@ -4,7 +4,7 @@ import pandas as pd
 # ----------------------
 # CONFIG
 # ----------------------
-st.set_page_config(page_title="Biliwaka MarketHub", page_icon="🏪", layout="wide")
+st.set_page_config(page_title="Biliwaka MarketSpace", page_icon="🏪", layout="wide")
 
 # ----------------------
 # STYLING
@@ -161,4 +161,4 @@ with st.form("create_listing"):
 # FOOTER
 # ----------------------
 st.markdown("---")
-st.markdown("<center style='color:gray'>© 2026 Biliwaka MarketHub</center>", unsafe_allow_html=True)
+st.markdown("<center style='color:gray'>© 2026 Biliwaka MarketSpace</center>", unsafe_allow_html=True)
