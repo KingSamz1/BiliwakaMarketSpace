@@ -10,6 +10,24 @@ from datetime import datetime
 st.set_page_config(page_title="Biliwaka MarketSpace", page_icon="🏪", layout="wide")
 
 # ----------------------
+# DATA MIGRATION (Fixes the KeyError)
+# ----------------------
+if "df" in st.session_state:
+    # If the user has an old version of the dataframe from a previous session,
+    # add the missing columns so it doesn't crash.
+    required_cols = {
+        "Description": "No description provided.",
+        "Rating": 4.0,
+        "Views": 0,
+        "Featured": False,
+        "Created At": datetime.now().strftime("%Y-%m-%d"),
+        "Status": "Active"
+    }
+    for col, default_val in required_cols.items():
+        if col not in st.session_state.df.columns:
+            st.session_state.df[col] = default_val
+
+# ----------------------
 # INIT STATE
 # ----------------------
 if "df" not in st.session_state:
@@ -75,9 +93,6 @@ if "df" not in st.session_state:
         ]
     })
 
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = True
-
 if "page" not in st.session_state:
     st.session_state.page = "home"
 
@@ -95,6 +110,9 @@ if "favorites" not in st.session_state:
 
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
+
+if "selected_category" not in st.session_state:
+    st.session_state.selected_category = "All"
 
 # ----------------------
 # TOAST SYSTEM
@@ -601,7 +619,7 @@ with st.sidebar:
     <div style="text-align:center;padding:20px 0 10px;">
         <div style="font-size:2.2rem;">🏪</div>
         <div style="font-weight:800;font-size:1.1rem;color:#ffd700 !important;">Biliwaka</div>
-        <div style="font-size:0.75rem;color:#6666aa !important;">MarketSpace v2.0</div>
+        <div style="font-size:0.75rem;color:#6666aa !important;">MarketSpace</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -616,13 +634,6 @@ with st.sidebar:
     ]
 
     for icon, label, page in nav_items:
-        is_active = st.session_state.page == page
-        cls = "nav-link active" if is_active else "nav-link"
-        st.markdown(f"""
-        <div class="{cls}" onclick="document.querySelector('[data-testid=\"stSidebarNav\"]')">
-            {icon} {label}
-        </div>
-        """, unsafe_allow_html=True)
         if st.button(f"{icon} {label}", key=f"nav_{page}",
                       use_container_width=True,
                       on_click=lambda p=page: setattr(st.session_state, 'page', p)):
@@ -636,9 +647,6 @@ with st.sidebar:
     all_cats = ["Fashion", "Beauty", "Electronics", "Services",
                 "Food", "Car Dealership 🚗", "Real Estate 🏠"]
 
-    if "selected_category" not in st.session_state:
-        st.session_state.selected_category = "All"
-
     cat_cols = st.columns(2)
     for i, cat in enumerate(["All"] + all_cats):
         with cat_cols[i % 2]:
@@ -649,12 +657,6 @@ with st.sidebar:
             color = CATEGORY_COLORS.get(cat, "#ffd700")
             border_c = color if is_active else "#2a2a4a"
 
-            st.markdown(f"""
-            <div class="{cls}" style="border-color:{border_c};width:100%;justify-content:center;"
-                 onclick="window.parent.postMessage('{{\"category\":\"{cat}\"}}', '*')">
-                {icon} {cat.split(' ')[0]} <span style="opacity:0.6;font-size:0.75rem;">({count})</span>
-            </div>
-            """, unsafe_allow_html=True)
             if st.button(f"{icon} {cat.split(' ')[0]} ({count})", key=f"cat_{cat}",
                           use_container_width=True,
                           on_click=lambda c=cat: setattr(st.session_state, 'selected_category', c)):
@@ -665,9 +667,22 @@ with st.sidebar:
     # Quick stats
     st.markdown("**⚡ Quick Stats**")
     total = len(st.session_state.df)
-    active = len(st.session_state.df[st.session_state.df["Status"] == "Active"]) if not st.session_state.df.empty else 0
-    featured = len(st.session_state.df[st.session_state.df["Featured"] == True]) if not st.session_state.df.empty else 0
-    total_views = st.session_state.df["Views"].sum() if not st.session_state.df.empty else 0
+    
+    # Safely check for Active status count to avoid KeyErrors
+    if "Status" in st.session_state.df.columns:
+        active = len(st.session_state.df[st.session_state.df["Status"] == "Active"])
+    else:
+        active = total
+        
+    if "Featured" in st.session_state.df.columns:
+        featured = len(st.session_state.df[st.session_state.df["Featured"] == True])
+    else:
+        featured = 0
+        
+    if "Views" in st.session_state.df.columns:
+        total_views = st.session_state.df["Views"].sum()
+    else:
+        total_views = 0
 
     st.markdown(f"""
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
@@ -739,12 +754,15 @@ if st.session_state.page == "home":
     filtered_df = df.copy()
 
     if search:
-        filtered_df = filtered_df[
-            filtered_df["Business Name"].str.contains(search, case=False, na=False) |
-            filtered_df["Product"].str.contains(search, case=False, na=False) |
-            filtered_df["Location"].str.contains(search, case=False, na=False) |
-            filtered_df["Description"].str.contains(search, case=False, na=False)
-        ]
+        search_cols = ["Business Name", "Product", "Location"]
+        if "Description" in filtered_df.columns:
+            search_cols.append("Description")
+            
+        mask = pd.Series([False] * len(filtered_df))
+        for col in search_cols:
+            if col in filtered_df.columns:
+                mask = mask | filtered_df[col].astype(str).str.contains(search, case=False, na=False)
+        filtered_df = filtered_df[mask]
 
     if st.session_state.selected_category != "All":
         filtered_df = filtered_df[filtered_df["Category"] == st.session_state.selected_category]
@@ -753,22 +771,27 @@ if st.session_state.page == "home":
         filtered_df = filtered_df[filtered_df["Location"] == location_filter]
 
     # Only show active listings to visitors
-    filtered_df = filtered_df[filtered_df["Status"] == "Active"]
+    if "Status" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["Status"] == "Active"]
 
     # Sort
-    if sort_option == "Newest First":
+    if sort_option == "Newest First" and "Created At" in filtered_df.columns:
         filtered_df = filtered_df.sort_values("Created At", ascending=False)
-    elif sort_option == "Oldest First":
+    elif sort_option == "Oldest First" and "Created At" in filtered_df.columns:
         filtered_df = filtered_df.sort_values("Created At", ascending=True)
-    elif sort_option == "Most Viewed":
+    elif sort_option == "Most Viewed" and "Views" in filtered_df.columns:
         filtered_df = filtered_df.sort_values("Views", ascending=False)
-    elif sort_option == "Highest Rated":
+    elif sort_option == "Highest Rated" and "Rating" in filtered_df.columns:
         filtered_df = filtered_df.sort_values("Rating", ascending=False)
     elif sort_option == "Name A-Z":
         filtered_df = filtered_df.sort_values("Product", ascending=True)
 
     # Featured section
-    featured_df = filtered_df[filtered_df["Featured"] == True]
+    if "Featured" in filtered_df.columns:
+        featured_df = filtered_df[filtered_df["Featured"] == True]
+    else:
+        featured_df = pd.DataFrame(columns=filtered_df.columns)
+        
     if not featured_df.empty:
         st.markdown('<div class="section-title">⭐ Featured Listings</div>', unsafe_allow_html=True)
         feat_cols = st.columns(min(3, len(featured_df)))
@@ -777,25 +800,26 @@ if st.session_state.page == "home":
                 phone = format_phone(row["Contact"])
                 wa_link = f"https://wa.me/{phone}?text=Hello%20I%20am%20interested%20in%20{row['Product']}"
                 call_link = f"tel:{phone}"
-                is_fav = row.name in st.session_state.favorites
-                fav_cls = "fav-btn active" if is_fav else "fav-btn"
                 cat_color = CATEGORY_COLORS.get(row["Category"], "#ffd700")
+                desc = row["Description"] if "Description" in row.index and pd.notna(row["Description"]) else ""
+                views = row["Views"] if "Views" in row.index and pd.notna(row["Views"]) else 0
+                rating = row["Rating"] if "Rating" in row.index and pd.notna(row["Rating"]) else 0
 
                 st.markdown(f"""
                 <div class="biz-card featured" style="border-top:3px solid {cat_color};">
                     <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
                         <span class="featured-badge">⭐ FEATURED</span>
-                        <span class="rating-stars">{render_stars(row['Rating'])}</span>
+                        <span class="rating-stars">{render_stars(rating)}</span>
                     </div>
                     <h3 style="margin:4px 0;">{row['Product']}</h3>
                     <p class="meta-text">🏢 {row['Business Name']} | 📍 {row['Location']}</p>
-                    <p class="desc-text">{row['Description'][:80]}...</p>
+                    <p class="desc-text">{desc[:80]}{'...' if len(desc) > 80 else ''}</p>
                     <p class="price-tag">💰 {row['Price (UGX)']}</p>
                     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
                         <a class="wa-btn" href="{wa_link}" target="_blank">💬 Chat</a>
                         <a class="call-btn" href="{call_link}">📞 Call</a>
                     </div>
-                    <p class="meta-text" style="margin-top:8px;">👁 {row['Views']:,} views</p>
+                    <p class="meta-text" style="margin-top:8px;">👁 {views:,} views</p>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -822,7 +846,11 @@ if st.session_state.page == "home":
             fav_text = "❤️ Saved" if is_fav else "🤍 Save"
             cat_icon = CATEGORY_ICONS.get(row["Category"], "📦")
             cat_color = CATEGORY_COLORS.get(row["Category"], "#ffd700")
-            featured_html = '<span class="featured-badge" style="margin-left:8px;">⭐ FEATURED</span>' if row["Featured"] else ""
+            featured_html = '<span class="featured-badge" style="margin-left:8px;">⭐ FEATURED</span>' if ("Featured" in row.index and row["Featured"]) else ""
+            desc = row["Description"] if "Description" in row.index and pd.notna(row["Description"]) else ""
+            views = row["Views"] if "Views" in row.index and pd.notna(row["Views"]) else 0
+            rating = row["Rating"] if "Rating" in row.index and pd.notna(row["Rating"]) else 0
+            created = row["Created At"] if "Created At" in row.index and pd.notna(row["Created At"]) else ""
 
             st.markdown(f"""
             <div class="biz-card" style="border-left:4px solid {cat_color};">
@@ -836,25 +864,19 @@ if st.session_state.page == "home":
                         </p>
                     </div>
                     <div style="text-align:right;">
-                        <div class="rating-stars">{render_stars(row['Rating'])}</div>
-                        <span class="meta-text">{row['Rating']}/5</span>
+                        <div class="rating-stars">{render_stars(rating)}</div>
+                        <span class="meta-text">{rating}/5</span>
                     </div>
                 </div>
-                <p class="desc-text">{row['Description']}</p>
+                <p class="desc-text">{desc}</p>
                 <p class="price-tag" style="margin:8px 0;">💰 {row['Price (UGX)']}</p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                     <a class="wa-btn" href="{wa_link}" target="_blank">💬 WhatsApp</a>
                     <a class="call-btn" href="{call_link}">📞 Call</a>
-                    <button class="{fav_cls}" onclick="
-                        fetch('/_stcore/save_favorite', {{
-                            method:'POST',
-                            body: JSON.stringify({{index: {idx}}})
-                        }});
-                    ">{fav_text}</button>
                 </div>
                 <div style="display:flex;justify-content:space-between;margin-top:10px;">
-                    <p class="meta-text">👁 {row['Views']:,} views</p>
-                    <p class="meta-text">📅 {row['Created At']}</p>
+                    <p class="meta-text">👁 {views:,} views</p>
+                    <p class="meta-text">📅 {created}</p>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1040,9 +1062,9 @@ elif st.session_state.page == "analytics":
     else:
         # Top stats
         total_listings = len(df)
-        total_views = df["Views"].sum()
-        avg_rating = df["Rating"].mean()
-        total_featured = len(df[df["Featured"] == True])
+        total_views = df["Views"].sum() if "Views" in df.columns else 0
+        avg_rating = df["Rating"].mean() if "Rating" in df.columns else 0
+        total_featured = len(df[df["Featured"] == True]) if "Featured" in df.columns else 0
         categories_used = df["Category"].nunique()
         locations_used = df["Location"].nunique()
 
@@ -1092,8 +1114,13 @@ elif st.session_state.page == "analytics":
 
         with col_top:
             st.markdown("**🔥 Top Viewed Listings**")
-            top_viewed = df.nlargest(5, "Views")
+            if "Views" in df.columns:
+                top_viewed = df.nlargest(5, "Views")
+            else:
+                top_viewed = df.head(5)
+                
             for i, (_, row) in enumerate(top_viewed.iterrows()):
+                views = int(row["Views"]) if "Views" in row.index and pd.notna(row["Views"]) else 0
                 st.markdown(f"""
                 <div style="display:flex;align-items:center;gap:12px;padding:10px;
                            background:#1a1a2e;border-radius:10px;margin-bottom:8px;
@@ -1106,7 +1133,7 @@ elif st.session_state.page == "analytics":
                         <div style="color:#7777aa !important;font-size:0.8rem;">{row['Business Name']}</div>
                     </div>
                     <div style="text-align:right;">
-                        <div style="color:#4285f4 !important;font-weight:700;">{row['Views']:,}</div>
+                        <div style="color:#4285f4 !important;font-weight:700;">{views:,}</div>
                         <div style="color:#5555aa !important;font-size:0.75rem;">views</div>
                     </div>
                 </div>
@@ -1131,19 +1158,20 @@ elif st.session_state.page == "analytics":
         st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
         # Rating distribution
-        st.markdown("**⭐ Rating Distribution**")
-        rating_cols = st.columns(5)
-        for i, r in enumerate([5, 4, 3, 2, 1]):
-            count = len(df[(df["Rating"] >= r - 0.5) & (df["Rating"] < r + 0.5)]) if r < 5 else len(df[df["Rating"] >= 4.5])
-            stars = "★" * r + "☆" * (5 - r)
-            with rating_cols[i]:
-                st.markdown(f"""
-                <div class="stat-card">
-                    <div class="rating-stars" style="font-size:1.1rem;">{stars}</div>
-                    <div class="stat-number" style="font-size:1.6rem;">{count}</div>
-                    <div class="stat-label">{r} star{'s' if r > 1 else ''}</div>
-                </div>
-                """, unsafe_allow_html=True)
+        if "Rating" in df.columns:
+            st.markdown("**⭐ Rating Distribution**")
+            rating_cols = st.columns(5)
+            for i, r in enumerate([5, 4, 3, 2, 1]):
+                count = len(df[(df["Rating"] >= r - 0.5) & (df["Rating"] < r + 0.5)]) if r < 5 else len(df[df["Rating"] >= 4.5])
+                stars = "★" * r + "☆" * (5 - r)
+                with rating_cols[i]:
+                    st.markdown(f"""
+                    <div class="stat-card">
+                        <div class="rating-stars" style="font-size:1.1rem;">{stars}</div>
+                        <div class="stat-number" style="font-size:1.6rem;">{count}</div>
+                        <div class="stat-label">{r} star{'s' if r > 1 else ''}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 # ======================
 # ADMIN PANEL
@@ -1189,7 +1217,8 @@ elif st.session_state.page == "admin":
             st.markdown(f"**Total: {len(df)} listings**")
 
             for idx, row in df.iterrows():
-                status_cls = "status-badge active" if row["Status"] == "Active" else "status-badge paused"
+                status_val = row["Status"] if "Status" in row.index else "Active"
+                status_cls = "status-badge active" if status_val == "Active" else "status-badge paused"
                 cat_color = CATEGORY_COLORS.get(row["Category"], "#ffd700")
 
                 st.markdown(f"""
@@ -1199,7 +1228,7 @@ elif st.session_state.page == "admin":
                             <h4 style="margin:0;">{row['Product']}</h4>
                             <p class="meta-text">{row['Business Name']} | {row['Location']} | {row['Price (UGX)']}</p>
                         </div>
-                        <span class="{status_cls}">● {row['Status']}</span>
+                        <span class="{status_cls}">● {status_val}</span>
                     </div>
                     <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
                 """, unsafe_allow_html=True)
@@ -1212,18 +1241,20 @@ elif st.session_state.page == "admin":
                         st.rerun()
                 with btn_cols[1]:
                     if st.button("🔄 Toggle", key=f"admin_toggle_{idx}", use_container_width=True):
-                        new_status = "Paused" if row["Status"] == "Active" else "Active"
+                        new_status = "Paused" if status_val == "Active" else "Active"
                         st.session_state.df.at[idx, "Status"] = new_status
                         show_toast(f"Listing {new_status.lower()}", "info")
                         st.rerun()
                 with btn_cols[2]:
                     if st.button("👁 +100", key=f"admin_views_{idx}", use_container_width=True):
-                        st.session_state.df.at[idx, "Views"] += 100
+                        current_views = int(row["Views"]) if "Views" in row.index and pd.notna(row["Views"]) else 0
+                        st.session_state.df.at[idx, "Views"] = current_views + 100
                         show_toast("+100 views added", "success")
                         st.rerun()
                 with btn_cols[3]:
                     if st.button("⭐ Feature", key=f"admin_feat_{idx}", use_container_width=True):
-                        st.session_state.df.at[idx, "Featured"] = not row["Featured"]
+                        current_feat = row["Featured"] if "Featured" in row.index else False
+                        st.session_state.df.at[idx, "Featured"] = not current_feat
                         show_toast("Featured toggled!", "info")
                         st.rerun()
                 with btn_cols[4]:
@@ -1241,7 +1272,7 @@ elif st.session_state.page == "admin":
                 st.info("No listings to feature.")
             else:
                 for idx, row in df.iterrows():
-                    is_feat = row["Featured"]
+                    is_feat = row["Featured"] if "Featured" in row.index else False
                     feat_label = "⭐ FEATURED" if is_feat else "☆ Not Featured"
                     feat_color = "#ffd700" if is_feat else "#5555aa"
                     st.markdown(f"""
@@ -1302,14 +1333,14 @@ elif st.session_state.page == "admin":
             st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
             st.markdown("**📥 Export Data**")
-            if st.button("Download as CSV", use_container_width=True):
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label="⬇️ Click to download",
-                    data=csv,
-                    file_name=f"biliwaka_marketplace_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
-                )
+            csv = df.to_csv(index=False)
+            st.download_button(
+                label="⬇️ Download CSV",
+                data=csv,
+                file_name=f"biliwaka_marketplace_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
 
 # ----------------------
 # FOOTER
