@@ -1,4 +1,7 @@
+import base64
 import datetime
+import hashlib
+import sqlite3
 import uuid
 
 import pandas as pd
@@ -10,558 +13,523 @@ st.set_page_config(page_title="Biliwaka MarketPlace", layout="wide")
 st.markdown(
     """
 <style>
-:root {
-    --bg-1: #0f172a;
-    --bg-2: #1e293b;
-    --card: #111827;
-    --card-soft: #1f2937;
-    --text: #e5e7eb;
-    --muted: #9ca3af;
-    --accent: #22c55e;
-    --accent-2: #06b6d4;
-    --gold: #fbbf24;
-}
-
 [data-testid="stAppViewContainer"] {
-    background: radial-gradient(circle at top right, #0b1120 0%, var(--bg-1) 35%, var(--bg-2) 100%);
-    color: var(--text);
+    background: radial-gradient(circle at top right, #0b1120 0%, #0f172a 35%, #1e293b 100%);
+    color: #e5e7eb;
 }
-
-[data-testid="stHeader"] {
-    background: transparent;
-}
-
+[data-testid="stHeader"] { background: transparent; }
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #0b1220 0%, #111827 100%);
 }
-
 .hero {
     background: linear-gradient(120deg, rgba(34,197,94,0.18), rgba(6,182,212,0.2));
-    border: 1px solid rgba(148, 163, 184, 0.25);
-    border-radius: 18px;
-    padding: 20px;
-    margin-bottom: 18px;
-}
-
-.hero h1 {
-    margin: 0;
-    color: white;
-}
-
-.hero p {
-    color: var(--muted);
-    margin-top: 8px;
-}
-
-.metric-card {
-    background: var(--card-soft);
-    border-radius: 14px;
-    border-left: 5px solid var(--accent-2);
-    padding: 12px;
-    margin-bottom: 8px;
-}
-
-.listing-card {
-    background: linear-gradient(150deg, rgba(17,24,39,0.95), rgba(31,41,55,0.95));
+    border: 1px solid rgba(148,163,184,0.25);
     border-radius: 16px;
-    border: 1px solid rgba(148,163,184,0.18);
-    padding: 14px;
-    margin-bottom: 14px;
+    padding: 18px;
+    margin-bottom: 12px;
 }
-
-.listing-title {
-    color: white;
-    margin-bottom: 6px;
-    font-size: 1.25rem;
-    font-weight: 700;
-}
-
-.badge {
-    display: inline-block;
-    color: #111827;
-    background: var(--gold);
-    border-radius: 999px;
-    padding: 2px 10px;
-    font-size: 0.75rem;
-    margin-right: 6px;
-}
-
-.subtle {
-    color: var(--muted);
-    font-size: 0.92rem;
-}
-
 .footer {
     text-align: center;
     color: #9ca3af;
     font-size: 0.9rem;
-    padding: 20px 0;
+    padding: 16px 0;
 }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-
+DB_PATH = "market.db"
 FREE_LIMIT = 4
-EXPIRY_DAYS = 45
+LISTING_EXPIRY_DAYS = 45
 FEATURED_DAYS = 7
 BANNER_DAYS = 7
+
+
+def get_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+conn = get_conn()
+
+
+def init_db() -> None:
+    with conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vendors(
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                phone TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                whatsapp_phone TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS listings(
+                id TEXT PRIMARY KEY,
+                vendor_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                category TEXT NOT NULL,
+                item_condition TEXT NOT NULL,
+                description TEXT,
+                price REAL NOT NULL,
+                location TEXT NOT NULL,
+                featured INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                views INTEGER DEFAULT 0,
+                whatsapp_clicks INTEGER DEFAULT 0,
+                calls INTEGER DEFAULT 0,
+                FOREIGN KEY(vendor_id) REFERENCES vendors(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS banner_ads(
+                id TEXT PRIMARY KEY,
+                vendor_id TEXT NOT NULL,
+                media_b64 TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                FOREIGN KEY(vendor_id) REFERENCES vendors(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ratings(
+                id TEXT PRIMARY KEY,
+                vendor_id TEXT NOT NULL,
+                rating INTEGER NOT NULL,
+                comment TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(vendor_id) REFERENCES vendors(id)
+            )
+            """
+        )
+
+
+def ensure_session() -> None:
+    if "vendor_id" not in st.session_state:
+        st.session_state.vendor_id = None
+    if "show_help" not in st.session_state:
+        st.session_state.show_help = True
 
 
 def now() -> datetime.datetime:
     return datetime.datetime.now()
 
 
-def to_price_value(value: str) -> float:
-    cleaned = "".join(ch for ch in str(value) if ch.isdigit() or ch == ".")
-    if not cleaned:
-        return 0.0
-    try:
-        return float(cleaned)
-    except ValueError:
-        return 0.0
+def now_iso() -> str:
+    return now().isoformat()
 
 
-def format_ugx(value: str) -> str:
-    amount = int(to_price_value(value))
-    return f"UGX {amount:,}" if amount > 0 else str(value)
+def future_iso(days: int) -> str:
+    return (now() + datetime.timedelta(days=days)).isoformat()
 
 
-def init_state() -> None:
-    if "active_user" not in st.session_state:
-        st.session_state.active_user = ""
-
-    if "users" not in st.session_state:
-        st.session_state.users = {}
-
-    if "favorites" not in st.session_state:
-        st.session_state.favorites = {}
-
-    if "listings" not in st.session_state:
-        st.session_state.listings = pd.DataFrame(
-            columns=[
-                "id",
-                "vendor",
-                "title",
-                "category",
-                "condition",
-                "description",
-                "price",
-                "price_value",
-                "location",
-                "image",
-                "featured",
-                "featured_until",
-                "created_at",
-                "expires_at",
-                "status",
-                "views",
-                "whatsapp_clicks",
-                "calls",
-            ]
-        )
-
-    if "banners" not in st.session_state:
-        st.session_state.banners = []
-
-    if "ratings" not in st.session_state:
-        st.session_state.ratings = []
-
-    if "show_how_to_use" not in st.session_state:
-        st.session_state.show_how_to_use = True
+def hash_pass(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
 
 
-def normalize_state_types() -> None:
-    # Handles old session formats to prevent cloud/runtime crashes.
-    if not isinstance(st.session_state.favorites, dict):
-        st.session_state.favorites = {}
-    if not isinstance(st.session_state.banners, list):
-        st.session_state.banners = []
-    if not isinstance(st.session_state.ratings, list):
-        st.session_state.ratings = []
+def verify_pass(password: str, stored_hash: str) -> bool:
+    return hash_pass(password) == stored_hash
+
+
+def clean_phone_for_uganda(raw: str) -> str:
+    digits = "".join(ch for ch in str(raw) if ch.isdigit())
+    if not digits:
+        return ""
+    if digits.startswith("256"):
+        local = digits[3:]
+    elif digits.startswith("0"):
+        local = digits[1:]
+    else:
+        local = digits
+    return f"256{local}"
+
+
+def can_post_free(vendor_id: str) -> bool:
+    week_ago = (now() - datetime.timedelta(days=7)).isoformat()
+    cur = conn.execute(
+        "SELECT COUNT(*) AS c FROM listings WHERE vendor_id=? AND created_at>=?",
+        (vendor_id, week_ago),
+    )
+    return cur.fetchone()["c"] < FREE_LIMIT
+
+
+def get_vendor(vendor_id: str | None) -> sqlite3.Row | None:
+    if not vendor_id:
+        return None
+    cur = conn.execute("SELECT * FROM vendors WHERE id=?", (vendor_id,))
+    return cur.fetchone()
 
 
 def cleanup_expired() -> None:
-    df = st.session_state.listings
-    if len(df) > 0:
-        active = df[df["expires_at"] > now()].copy()
-        active.loc[active["featured_until"] <= now(), "featured"] = False
-        st.session_state.listings = active
-
-    active_banners = [b for b in st.session_state.banners if b["expires_at"] > now()]
-    st.session_state.banners = active_banners
+    now_s = now_iso()
+    with conn:
+        conn.execute("DELETE FROM listings WHERE expires_at < ?", (now_s,))
+        conn.execute("DELETE FROM banner_ads WHERE expires_at < ?", (now_s,))
 
 
-def last_7_days_count(vendor: str) -> int:
-    df = st.session_state.listings
-    cutoff = now() - datetime.timedelta(days=7)
-    if len(df) == 0:
-        return 0
-    return len(df[(df["vendor"] == vendor) & (df["created_at"] > cutoff)])
-
-
-def get_rating_summary(vendor: str) -> tuple[float, int]:
-    vendor_ratings = [r["rating"] for r in st.session_state.ratings if r["vendor"] == vendor]
-    if not vendor_ratings:
-        return 0.0, 0
-    avg = round(sum(vendor_ratings) / len(vendor_ratings), 1)
-    return avg, len(vendor_ratings)
-
-
-def share_link(title: str, item_type: str) -> str:
-    msg = f"Check this {item_type}: {title} on Biliwaka MarketPlace"
+def share_link(title: str) -> str:
+    msg = f"Check this listing: {title} on Biliwaka MarketPlace"
     return "https://wa.me/?text=" + msg.replace(" ", "%20")
 
 
-def safe_html(text: str) -> str:
-    return (
-        str(text)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
+def render_help_box() -> None:
+    if not st.session_state.show_help:
+        return
+    st.info("Welcome to Biliwaka MarketPlace. Read this quick guide first.")
+    with st.expander("📘 How to use", expanded=True):
+        st.markdown(
+            """
+1. Open **Auth** and register or log in.
+2. During sign up, enter your WhatsApp/Call number.  
+   This becomes the default contact for your listings.
+3. You can change this later in **Settings**.
+4. Create a listing from **Create Listing**.
+5. Buyers use WhatsApp/Call buttons that match your saved number.
+"""
+        )
+        if st.button("Got it, hide help"):
+            st.session_state.show_help = False
+            st.rerun()
+
+
+def auth_tab() -> None:
+    st.subheader("Sign up or Log in")
+    login_col, signup_col = st.columns(2)
+
+    with signup_col:
+        st.markdown("### Create account")
+        s_name = st.text_input("Business Name", key="signup_name")
+        s_phone = st.text_input("Login Phone", key="signup_phone")
+        s_whatsapp = st.text_input("WhatsApp/Call Number", key="signup_wa")
+        st.caption("You can change this in Settings later.")
+        s_password = st.text_input("Password", type="password", key="signup_pass")
+        if st.button("Sign up", key="signup_btn"):
+            formatted_login = clean_phone_for_uganda(s_phone)
+            formatted_wa = clean_phone_for_uganda(s_whatsapp)
+            if not s_name.strip() or not formatted_login or not formatted_wa or not s_password:
+                st.error("All fields are required.")
+                return
+            try:
+                with conn:
+                    conn.execute(
+                        "INSERT INTO vendors (id,name,phone,password_hash,whatsapp_phone,created_at) VALUES (?,?,?,?,?,?)",
+                        (
+                            str(uuid.uuid4()),
+                            s_name.strip(),
+                            formatted_login,
+                            hash_pass(s_password),
+                            formatted_wa,
+                            now_iso(),
+                        ),
+                    )
+                st.success("Account created. You can now log in.")
+            except sqlite3.IntegrityError:
+                st.error("Phone already exists. Try logging in.")
+
+    with login_col:
+        st.markdown("### Log in")
+        l_phone = st.text_input("Phone", key="login_phone")
+        l_password = st.text_input("Password", type="password", key="login_pass")
+        if st.button("Log in", key="login_btn"):
+            formatted_phone = clean_phone_for_uganda(l_phone)
+            cur = conn.execute("SELECT * FROM vendors WHERE phone=?", (formatted_phone,))
+            vendor = cur.fetchone()
+            if vendor and verify_pass(l_password, vendor["password_hash"]):
+                st.session_state.vendor_id = vendor["id"]
+                st.success("Logged in.")
+                st.rerun()
+            else:
+                st.error("Invalid phone or password.")
+
+
+def settings_tab(vendor: sqlite3.Row | None) -> None:
+    st.subheader("Settings")
+    if not vendor:
+        st.warning("Log in to use settings.")
+        return
+    st.write(f"Logged in as: **{vendor['name']}**")
+    new_name = st.text_input("Business Name", value=vendor["name"])
+    new_whatsapp = st.text_input("Default WhatsApp/Call Number", value=vendor["whatsapp_phone"])
+    st.caption("This number is used automatically on all your listing buttons.")
+    if st.button("Save settings"):
+        normalized = clean_phone_for_uganda(new_whatsapp)
+        if not new_name.strip() or not normalized:
+            st.error("Provide valid name and number.")
+            return
+        with conn:
+            conn.execute(
+                "UPDATE vendors SET name=?, whatsapp_phone=? WHERE id=?",
+                (new_name.strip(), normalized, vendor["id"]),
+            )
+        st.success("Settings updated.")
+        st.rerun()
+
+    if st.button("Logout"):
+        st.session_state.vendor_id = None
+        st.success("Logged out.")
+        st.rerun()
+
+
+def create_listing_tab(vendor: sqlite3.Row | None) -> None:
+    st.subheader("Create Listing")
+    if not vendor:
+        st.warning("Please log in first.")
+        return
+
+    if not can_post_free(vendor["id"]):
+        st.warning("Free limit reached (4 listings in 7 days). Use Featured listing.")
+
+    with st.form("create_listing", clear_on_submit=True):
+        title = st.text_input("Title")
+        category = st.selectbox("Category", ["Electronics", "Fashion", "Vehicles", "Property", "Home", "Services", "Other"])
+        item_condition = st.selectbox("Condition", ["Brand New", "Like New", "Used", "Refurbished"])
+        price = st.number_input("Price (UGX)", min_value=0.0, step=1000.0)
+        location = st.text_input("Location")
+        description = st.text_area("Description")
+        featured = st.checkbox("Featured Ad (UGX 40,000 / 7 days)")
+        submitted = st.form_submit_button("Publish")
+
+    if submitted:
+        if not title.strip() or not location.strip() or price <= 0:
+            st.error("Title, location and valid price are required.")
+            return
+        if not featured and not can_post_free(vendor["id"]):
+            st.error("Free posting limit reached. Enable featured ad.")
+            return
+
+        expiry_days = FEATURED_DAYS if featured else LISTING_EXPIRY_DAYS
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO listings (
+                    id,vendor_id,title,category,item_condition,description,price,location,featured,created_at,expires_at,views,whatsapp_clicks,calls
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    vendor["id"],
+                    title.strip(),
+                    category,
+                    item_condition,
+                    description.strip(),
+                    float(price),
+                    location.strip(),
+                    1 if featured else 0,
+                    now_iso(),
+                    future_iso(expiry_days),
+                    0,
+                    0,
+                    0,
+                ),
+            )
+        if featured:
+            st.info("Pay Featured Ad: https://wa.me/256775998783?text=FEATURED%2040000%20UGX%207%20DAYS")
+        st.success("Listing published.")
+        st.rerun()
+
+
+def create_banner_tab(vendor: sqlite3.Row | None) -> None:
+    st.subheader("Create Banner Ad")
+    if not vendor:
+        st.warning("Please log in first.")
+        return
+
+    with st.form("banner_form", clear_on_submit=True):
+        file = st.file_uploader("Upload image/video", type=["png", "jpg", "jpeg", "mp4", "mov"])
+        submit = st.form_submit_button("Publish Banner (UGX 20,000)")
+    if submit:
+        if not file:
+            st.error("Please upload media.")
+            return
+        media_b64 = base64.b64encode(file.read()).decode()
+        with conn:
+            conn.execute(
+                "INSERT INTO banner_ads (id,vendor_id,media_b64,media_type,created_at,expires_at) VALUES (?,?,?,?,?,?)",
+                (
+                    str(uuid.uuid4()),
+                    vendor["id"],
+                    media_b64,
+                    file.type,
+                    now_iso(),
+                    future_iso(BANNER_DAYS),
+                ),
+            )
+        st.info("Pay Banner: https://wa.me/256775998783?text=BANNER%2020000%20UGX%207%20DAYS")
+        st.success("Banner added.")
+        st.rerun()
+
+
+def marketplace_tab(vendor: sqlite3.Row | None) -> None:
+    st.subheader("Marketplace")
+    cur = conn.execute(
+        """
+        SELECT l.*, v.name AS vendor_name, v.whatsapp_phone AS vendor_phone
+        FROM listings l
+        JOIN vendors v ON l.vendor_id = v.id
+        ORDER BY l.featured DESC, l.created_at DESC
+        """
     )
+    rows = cur.fetchall()
+    if not rows:
+        st.info("No active listings yet.")
+    else:
+        listing_df = pd.DataFrame([dict(r) for r in rows])
+        q = st.text_input("Search")
+        if q.strip():
+            pattern = q.strip().lower()
+            listing_df = listing_df[
+                listing_df["title"].str.lower().str.contains(pattern, na=False)
+                | listing_df["description"].str.lower().str.contains(pattern, na=False)
+                | listing_df["location"].str.lower().str.contains(pattern, na=False)
+            ]
+        for _, row in listing_df.iterrows():
+            badge = "🔥 FEATURED" if int(row["featured"]) == 1 else ""
+            st.markdown(f"### {row['title']} {badge}")
+            st.write(f"Vendor: {row['vendor_name']}")
+            st.write(f"Price: UGX {int(row['price']):,}")
+            st.write(f"Location: {row['location']}")
+            st.write(row["description"] or "-")
+            cols = st.columns(3)
+            wa_message = f"Hello, I am interested in {row['title']} and I saw it on Biliwaka MarketPlace."
+            wa_url = f"https://wa.me/{row['vendor_phone']}?text={wa_message.replace(' ', '%20')}"
+            call_url = f"tel:{row['vendor_phone']}"
+
+            with cols[0]:
+                if st.button("WhatsApp", key=f"wa_{row['id']}"):
+                    with conn:
+                        conn.execute(
+                            "UPDATE listings SET whatsapp_clicks=whatsapp_clicks+1 WHERE id=?",
+                            (row["id"],),
+                        )
+                    st.link_button("Open WhatsApp", wa_url)
+            with cols[1]:
+                if st.button("Call", key=f"call_{row['id']}"):
+                    with conn:
+                        conn.execute("UPDATE listings SET calls=calls+1 WHERE id=?", (row["id"],))
+                    st.link_button("Call Vendor", call_url)
+            with cols[2]:
+                st.link_button("Share", share_link(row["title"]))
+
+            if vendor and vendor["id"] == row["vendor_id"]:
+                if st.button("Delete listing", key=f"del_{row['id']}"):
+                    with conn:
+                        conn.execute("DELETE FROM listings WHERE id=?", (row["id"],))
+                    st.success("Deleted.")
+                    st.rerun()
+            st.markdown("---")
+
+    st.markdown("### Sponsored Banners")
+    b_cur = conn.execute(
+        """
+        SELECT * FROM banner_ads
+        ORDER BY created_at DESC
+        LIMIT 10
+        """
+    )
+    ads = b_cur.fetchall()
+    if not ads:
+        st.caption("No active banners.")
+    else:
+        for ad in ads:
+            media = base64.b64decode(ad["media_b64"])
+            if "video" in ad["media_type"]:
+                st.video(media)
+            else:
+                st.image(media, use_container_width=True)
 
 
-init_state()
-normalize_state_types()
+def ratings_tab(vendor: sqlite3.Row | None) -> None:
+    st.subheader("Ratings")
+    if not vendor:
+        st.warning("Please log in to rate vendors.")
+        return
+    target_phone = st.text_input("Vendor phone to rate")
+    score = st.slider("Rating", 1, 5, 5)
+    comment = st.text_area("Comment")
+    if st.button("Submit rating"):
+        cleaned = clean_phone_for_uganda(target_phone)
+        target = conn.execute("SELECT id FROM vendors WHERE phone=?", (cleaned,)).fetchone()
+        if not target:
+            st.error("Vendor not found.")
+            return
+        with conn:
+            conn.execute(
+                "INSERT INTO ratings (id,vendor_id,rating,comment,created_at) VALUES (?,?,?,?,?)",
+                (str(uuid.uuid4()), target["id"], int(score), comment.strip(), now_iso()),
+            )
+        st.success("Rating submitted.")
+
+    rep = conn.execute(
+        """
+        SELECT v.name, v.phone, ROUND(AVG(r.rating), 2) AS avg_rating, COUNT(r.id) AS review_count
+        FROM ratings r
+        JOIN vendors v ON v.id = r.vendor_id
+        GROUP BY r.vendor_id
+        ORDER BY avg_rating DESC, review_count DESC
+        """
+    ).fetchall()
+    if rep:
+        st.dataframe(pd.DataFrame([dict(x) for x in rep]), use_container_width=True)
+
+
+init_db()
+ensure_session()
 cleanup_expired()
-
+active_vendor = get_vendor(st.session_state.vendor_id)
 
 st.markdown(
     """
 <div class="hero">
     <h1>🏪 Biliwaka MarketPlace</h1>
-    <p>Modern marketplace for buying, selling, featured ads, banner campaigns, and trusted vendor ratings.</p>
+    <p>Buy. Sell. Promote. Connect fast with verified WhatsApp contact links.</p>
 </div>
 """,
     unsafe_allow_html=True,
 )
 
-if st.session_state.show_how_to_use:
-    st.info("Welcome! Start here: how to use Biliwaka MarketPlace.")
-    with st.expander("📘 How to use this marketplace", expanded=True):
-        st.markdown(
-            """
-1. Browse listings using search, category, location, and sorting.
-2. Login from the sidebar with phone/email to publish and manage ads.
-3. Create listings (first 4 in 7 days are free; featured ads are paid).
-4. Use WhatsApp/Call buttons to contact vendors quickly.
-5. Rate vendors to build trust and use favorites to save listings.
-"""
-        )
-        if st.button("Got it, hide guide"):
-            st.session_state.show_how_to_use = False
-            st.rerun()
+render_help_box()
 
+if st.sidebar.button("❓ Help"):
+    st.session_state.show_help = True
+    st.rerun()
 
-st.sidebar.title("Account")
-auth_value = st.sidebar.text_input("Phone or Email", value=st.session_state.active_user)
-if st.sidebar.button("Login / Switch User"):
-    st.session_state.active_user = auth_value.strip()
-    st.success("Logged in.")
-
-if st.sidebar.button("Logout"):
-    st.session_state.active_user = ""
-    st.info("Logged out.")
-
-vendor = st.session_state.active_user
-st.sidebar.caption(f"Active user: `{vendor}`" if vendor else "Not logged in")
-
-
-if vendor and vendor not in st.session_state.favorites:
-    st.session_state.favorites[vendor] = []
-
-
-df = st.session_state.listings.copy()
-if len(df) > 0:
-    df = df.sort_values(by=["featured", "created_at"], ascending=[False, False])
-
-total_listings = len(df)
-featured_count = int(df["featured"].sum()) if len(df) > 0 else 0
-active_vendors = df["vendor"].nunique() if len(df) > 0 else 0
-avg_price = int(df["price_value"].mean()) if len(df) > 0 else 0
-
-col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-col_m1.markdown(f'<div class="metric-card"><b>Active Listings</b><br>{total_listings}</div>', unsafe_allow_html=True)
-col_m2.markdown(f'<div class="metric-card"><b>Featured Ads</b><br>{featured_count}</div>', unsafe_allow_html=True)
-col_m3.markdown(f'<div class="metric-card"><b>Active Vendors</b><br>{active_vendors}</div>', unsafe_allow_html=True)
-col_m4.markdown(
-    f'<div class="metric-card"><b>Average Price</b><br>{"UGX {:,}".format(avg_price) if avg_price else "N/A"}</div>',
-    unsafe_allow_html=True,
+st.sidebar.markdown("### Navigation")
+page = st.sidebar.radio(
+    "Go to",
+    ["Marketplace", "Auth", "Create Listing", "Banner Ad", "Ratings", "Settings"],
 )
 
-
-st.markdown("## 📢 Banner Ads (UGX 20,000 / week)")
-if st.session_state.banners:
-    banner_cols = st.columns(2)
-    for i, ad in enumerate(st.session_state.banners[:10]):
-        with banner_cols[i % 2]:
-            st.caption(f"Campaign ends: {ad['expires_at'].strftime('%d %b %Y')}")
-            if ad["type"] == "image":
-                st.image(ad["file"], use_container_width=True)
-            else:
-                st.video(ad["file"])
+if active_vendor:
+    st.sidebar.success(f"Logged in: {active_vendor['name']}")
+    st.sidebar.caption(f"Default contact: {active_vendor['whatsapp_phone']}")
 else:
-    st.info("No active banners yet.")
+    st.sidebar.info("Not logged in")
 
-st.markdown("---")
-st.markdown("## 🔎 Discover Listings")
-
-filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([2, 1, 1, 1])
-with filter_col1:
-    search_term = st.text_input("Search title, description, or vendor")
-with filter_col2:
-    categories = ["All"] + (sorted(df["category"].dropna().unique().tolist()) if len(df) > 0 else [])
-    chosen_category = st.selectbox("Category", categories)
-with filter_col3:
-    location_options = ["All"] + (sorted(df["location"].dropna().unique().tolist()) if len(df) > 0 else [])
-    chosen_location = st.selectbox("Location", location_options)
-with filter_col4:
-    sort_by = st.selectbox("Sort", ["Newest", "Price: Low to High", "Price: High to Low", "Most Viewed"])
-
-featured_only = st.checkbox("Show featured only", value=False)
-
-filtered = df.copy()
-if len(filtered) > 0:
-    if search_term:
-        term = search_term.lower().strip()
-        filtered = filtered[
-            filtered["title"].str.lower().str.contains(term, na=False)
-            | filtered["description"].str.lower().str.contains(term, na=False)
-            | filtered["vendor"].str.lower().str.contains(term, na=False)
-        ]
-    if chosen_category != "All":
-        filtered = filtered[filtered["category"] == chosen_category]
-    if chosen_location != "All":
-        filtered = filtered[filtered["location"] == chosen_location]
-    if featured_only:
-        filtered = filtered[filtered["featured"] == True]
-
-    if sort_by == "Price: Low to High":
-        filtered = filtered.sort_values(by="price_value", ascending=True)
-    elif sort_by == "Price: High to Low":
-        filtered = filtered.sort_values(by="price_value", ascending=False)
-    elif sort_by == "Most Viewed":
-        filtered = filtered.sort_values(by="views", ascending=False)
-    else:
-        filtered = filtered.sort_values(by="created_at", ascending=False)
-
-if len(filtered) == 0:
-    st.warning("No listings matched your filters.")
-else:
-    for _, row in filtered.iterrows():
-        listing_id = row["id"]
-        listing_index = st.session_state.listings.index[st.session_state.listings["id"] == listing_id]
-        avg_rating, rating_count = get_rating_summary(row["vendor"])
-        rating_text = f"⭐ {avg_rating} ({rating_count})" if rating_count else "No ratings yet"
-
-        with st.container(border=True):
-            st.markdown(
-                f"""
-<div class="listing-card">
-    <div class="listing-title">{safe_html(row["title"])}</div>
-    <span class="badge">{safe_html(row["category"])}</span>
-    <span class="badge">{safe_html(row["condition"])}</span>
-    <p class="subtle">Vendor: {safe_html(row["vendor"])} | {rating_text}</p>
-    <p>{safe_html(row["description"])}</p>
-    <p>📍 {safe_html(row["location"])} | 💰 <b>{format_ugx(row["price"])}</b></p>
-    <p class="subtle">Views: {int(row["views"])} | WhatsApp clicks: {int(row["whatsapp_clicks"])} | Calls: {int(row["calls"])}</p>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-
-            if row["image"]:
-                st.image(row["image"], use_container_width=True)
-
-            action_col1, action_col2, action_col3, action_col4 = st.columns(4)
-
-            with action_col1:
-                if st.button("👁 View", key=f"view_{listing_id}"):
-                    if len(listing_index) > 0:
-                        st.session_state.listings.at[listing_index[0], "views"] += 1
-                        st.rerun()
-
-            with action_col2:
-                if st.button("💬 WhatsApp", key=f"wa_{listing_id}"):
-                    if len(listing_index) > 0:
-                        st.session_state.listings.at[listing_index[0], "whatsapp_clicks"] += 1
-                    wa_url = f"https://wa.me/{row['vendor']}?text=Interested%20in%20{row['title']}"
-                    st.link_button("Open WhatsApp", wa_url, use_container_width=True)
-
-            with action_col3:
-                if st.button("📞 Call", key=f"call_{listing_id}"):
-                    if len(listing_index) > 0:
-                        st.session_state.listings.at[listing_index[0], "calls"] += 1
-                    st.link_button("Call Vendor", f"tel:{row['vendor']}", use_container_width=True)
-
-            with action_col4:
-                st.link_button("🔗 Share", share_link(row["title"], "listing"), use_container_width=True)
-
-            if vendor:
-                favs = st.session_state.favorites.setdefault(vendor, [])
-                in_fav = listing_id in favs
-                if st.button("⭐ Remove Favorite" if in_fav else "⭐ Save Favorite", key=f"fav_{listing_id}_{vendor}"):
-                    if in_fav:
-                        favs.remove(listing_id)
-                    else:
-                        favs.append(listing_id)
-                    st.session_state.favorites[vendor] = favs
-                    st.rerun()
-
-            if vendor and row["vendor"] == vendor:
-                if st.button("🗑 Delete My Listing", key=f"del_{listing_id}"):
-                    st.session_state.listings = st.session_state.listings[st.session_state.listings["id"] != listing_id]
-                    st.success("Listing deleted.")
-                    st.rerun()
-
-
-st.markdown("---")
-st.markdown("## ➕ Create Listing")
-
-with st.form("listing_form", clear_on_submit=True):
-    c1, c2 = st.columns(2)
-    with c1:
-        title = st.text_input("Title")
-        category = st.selectbox("Category", ["Electronics", "Fashion", "Vehicles", "Property", "Home", "Services", "Other"])
-        condition = st.selectbox("Condition", ["Brand New", "Like New", "Used", "Refurbished"])
-        price = st.text_input("Price (UGX)")
-    with c2:
-        location = st.text_input("Location")
-        description = st.text_area("Description")
-        photo = st.file_uploader("Photo", type=["png", "jpg", "jpeg"], accept_multiple_files=False)
-        featured = st.checkbox("⭐ Featured Ad (40K / 7 days)")
-
-    publish = st.form_submit_button("Publish Listing")
-
-if publish:
-    if not vendor:
-        st.error("Login required before publishing.")
-    elif not title.strip() or not price.strip() or not location.strip():
-        st.error("Title, price, and location are required.")
-    else:
-        recent_count = last_7_days_count(vendor)
-        if recent_count >= FREE_LIMIT and not featured:
-            st.error("Free listing limit reached (4 in 7 days). Upgrade to featured.")
-        else:
-            listing = {
-                "id": str(uuid.uuid4()),
-                "vendor": vendor,
-                "title": title.strip(),
-                "category": category,
-                "condition": condition,
-                "description": description.strip(),
-                "price": price.strip(),
-                "price_value": to_price_value(price),
-                "location": location.strip(),
-                "image": photo.getvalue() if photo else None,
-                "featured": featured,
-                "featured_until": now() + datetime.timedelta(days=FEATURED_DAYS) if featured else now(),
-                "created_at": now(),
-                "expires_at": now() + datetime.timedelta(days=EXPIRY_DAYS),
-                "status": "active",
-                "views": 0,
-                "whatsapp_clicks": 0,
-                "calls": 0,
-            }
-
-            st.session_state.listings = pd.concat([st.session_state.listings, pd.DataFrame([listing])], ignore_index=True)
-            if featured:
-                st.info("Pay Featured Ad: https://wa.me/256775998783?text=FEATURED%2040000%20UGX%207%20DAYS")
-            st.success("Listing published successfully.")
-            st.rerun()
-
-
-st.markdown("---")
-st.markdown("## 📢 Create Banner Ad (UGX 20,000 / week)")
-with st.form("banner_form", clear_on_submit=True):
-    banner_file = st.file_uploader("Upload Banner Image/Video", type=["png", "jpg", "jpeg", "mp4", "mov"])
-    banner_type = st.selectbox("Banner Type", ["image", "video"])
-    create_banner = st.form_submit_button("Create Banner")
-
-if create_banner:
-    if not vendor:
-        st.error("Login required before creating a banner.")
-    elif not banner_file:
-        st.error("Upload a banner file first.")
-    else:
-        st.session_state.banners.append(
-            {
-                "id": str(uuid.uuid4()),
-                "owner": vendor,
-                "file": banner_file.getvalue(),
-                "type": banner_type,
-                "created_at": now(),
-                "expires_at": now() + datetime.timedelta(days=BANNER_DAYS),
-            }
-        )
-        st.info("Pay Banner: https://wa.me/256775998783?text=BANNER%2020000%20UGX%207%20DAYS")
-        st.success("Banner campaign submitted.")
-
-
-st.markdown("---")
-st.markdown("## ⭐ Rate Vendors")
-with st.form("rating_form", clear_on_submit=True):
-    rated_vendor = st.text_input("Vendor Phone or Email")
-    rating = st.slider("Rating", 1, 5, 5)
-    review = st.text_area("Review")
-    submit_rating = st.form_submit_button("Submit Rating")
-
-if submit_rating:
-    if not rated_vendor.strip():
-        st.error("Vendor ID is required.")
-    else:
-        st.session_state.ratings.append(
-            {
-                "id": str(uuid.uuid4()),
-                "vendor": rated_vendor.strip(),
-                "rating": int(rating),
-                "review": review.strip(),
-                "created_at": now(),
-            }
-        )
-        st.success("Rating submitted.")
-
-
-if st.session_state.ratings:
-    st.markdown("## 📊 Vendor Reputation Board")
-    ratings_df = pd.DataFrame(st.session_state.ratings)
-    rep = (
-        ratings_df.groupby("vendor")
-        .agg(avg_rating=("rating", "mean"), reviews=("rating", "count"))
-        .sort_values(by=["avg_rating", "reviews"], ascending=[False, False])
-    )
-    rep["avg_rating"] = rep["avg_rating"].round(2)
-    st.dataframe(rep, use_container_width=True)
-
-
-if vendor:
-    st.markdown("---")
-    st.markdown("## 🧑‍💼 My Dashboard")
-
-    my_listings = st.session_state.listings[st.session_state.listings["vendor"] == vendor]
-    my_favorites = st.session_state.favorites.get(vendor, [])
-    my_views = int(my_listings["views"].sum()) if len(my_listings) > 0 else 0
-    my_leads = int(my_listings["whatsapp_clicks"].sum() + my_listings["calls"].sum()) if len(my_listings) > 0 else 0
-
-    d1, d2, d3, d4 = st.columns(4)
-    d1.metric("My Listings", len(my_listings))
-    d2.metric("My Total Views", my_views)
-    d3.metric("My Leads", my_leads)
-    d4.metric("Saved Favorites", len(my_favorites))
-
-    if my_favorites:
-        st.markdown("### ⭐ My Favorite Listings")
-        fav_df = st.session_state.listings[st.session_state.listings["id"].isin(my_favorites)]
-        if len(fav_df) > 0:
-            st.dataframe(
-                fav_df[["title", "price", "location", "vendor", "views", "whatsapp_clicks", "calls"]],
-                use_container_width=True,
-            )
-        else:
-            st.caption("No active favorite listings right now.")
+if page == "Marketplace":
+    marketplace_tab(active_vendor)
+elif page == "Auth":
+    auth_tab()
+elif page == "Create Listing":
+    create_listing_tab(active_vendor)
+elif page == "Banner Ad":
+    create_banner_tab(active_vendor)
+elif page == "Ratings":
+    ratings_tab(active_vendor)
+elif page == "Settings":
+    settings_tab(active_vendor)
 
 st.markdown("---")
 st.markdown('<div class="footer">© 2026 Biliwaka MarketPlace</div>', unsafe_allow_html=True)
