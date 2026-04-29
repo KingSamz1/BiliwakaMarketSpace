@@ -119,6 +119,15 @@ def init_db() -> None:
         )
 
 
+def ensure_listings_visibility_column() -> None:
+    # Adds an admin-controlled "visibility" flag for moderation.
+    existing = conn.execute("PRAGMA table_info(listings)").fetchall()
+    cols = {r["name"] for r in existing}
+    if "is_active" not in cols:
+        with conn:
+            conn.execute("ALTER TABLE listings ADD COLUMN is_active INTEGER DEFAULT 1")
+
+
 def ensure_session() -> None:
     if "vendor_id" not in st.session_state:
         st.session_state.vendor_id = None
@@ -475,8 +484,12 @@ def marketplace_tab(vendor: sqlite3.Row | None) -> None:
         SELECT l.*, v.name AS vendor_name, v.whatsapp_phone AS vendor_phone
         FROM listings l
         JOIN vendors v ON l.vendor_id = v.id
+        WHERE l.expires_at > ?
+          AND l.is_active = 1
         ORDER BY l.featured DESC, l.created_at DESC
         """
+        ,
+        (now_iso(),),
     )
     rows = cur.fetchall()
     if not rows:
@@ -595,6 +608,112 @@ def admin_panel_tab() -> None:
                 st.error("Invalid admin password.")
         return
 
+    listings = conn.execute(
+        """
+        SELECT l.id,
+               l.title,
+               l.category,
+               l.price,
+               l.location,
+               l.featured,
+               l.is_active,
+               l.expires_at,
+               v.name AS vendor_name
+        FROM listings l
+        JOIN vendors v ON v.id = l.vendor_id
+        ORDER BY l.created_at DESC
+        """
+    ).fetchall()
+
+    if not listings:
+        st.info("No listings in the database yet.")
+        return
+
+    st.markdown("### Moderate / Configure Listings")
+    listing_ids = [r["id"] for r in listings]
+    selected_id = st.selectbox("Pick a listing", listing_ids)
+    selected = next((r for r in listings if r["id"] == selected_id), None)
+
+    if selected is None:
+        st.error("Listing not found.")
+        return
+
+    st.write(
+        f"**{selected['title']}** by {selected['vendor_name']} · "
+        f"Category: {selected['category']} · Price: UGX {int(selected['price']):,} · "
+        f"Status: {'Active' if selected['is_active'] == 1 else 'Hidden'}"
+    )
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        if st.button("Hide listing", key="hide_listing_btn"):
+            with conn:
+                conn.execute("UPDATE listings SET is_active=0 WHERE id=?", (selected_id,))
+            st.success("Listing hidden.")
+            st.rerun()
+    with col_b:
+        if st.button("Show listing", key="show_listing_btn"):
+            with conn:
+                conn.execute("UPDATE listings SET is_active=1 WHERE id=?", (selected_id,))
+            st.success("Listing shown.")
+            st.rerun()
+
+    with col_c:
+        if st.button("Delete listing permanently", key="delete_listing_btn"):
+            with conn:
+                conn.execute("DELETE FROM listings WHERE id=?", (selected_id,))
+            st.success("Listing deleted permanently.")
+            st.rerun()
+
+    with st.expander("Edit listing details", expanded=False):
+        cat_options = ["Electronics", "Fashion", "Salon", "Vehicles", "Property", "Home", "Services", "Other"]
+        # Include any additional categories found in DB.
+        db_cats = sorted({r["category"] for r in listings if r["category"]})
+        for c in db_cats:
+            if c not in cat_options:
+                cat_options.append(c)
+
+        condition_options = ["Brand New", "Like New", "Used", "Refurbished"]
+        with st.form("edit_listing_form"):
+            new_title = st.text_input("Title", value=selected["title"])
+            new_category = st.selectbox("Category", cat_options, index=cat_options.index(selected["category"]) if selected["category"] in cat_options else 0)
+            new_condition = st.selectbox("Condition", condition_options, index=condition_options.index(selected["item_condition"]) if selected["item_condition"] in condition_options else 0)
+            new_description = st.text_area("Description", value=selected["description"] or "")
+            new_price = st.number_input("Price (UGX)", min_value=0.0, step=1000.0, value=float(selected["price"]))
+            new_location = st.text_input("Location", value=selected["location"])
+            new_featured = st.checkbox("Featured", value=selected["featured"] == 1)
+            new_visibility = st.checkbox("Visible to buyers", value=selected["is_active"] == 1)
+
+            if st.form_submit_button("Save changes"):
+                with conn:
+                    conn.execute(
+                        """
+                        UPDATE listings
+                        SET title=?,
+                            category=?,
+                            item_condition=?,
+                            description=?,
+                            price=?,
+                            location=?,
+                            featured=?,
+                            is_active=?
+                        WHERE id=?
+                        """,
+                        (
+                            new_title.strip(),
+                            new_category,
+                            new_condition,
+                            new_description.strip(),
+                            float(new_price),
+                            new_location.strip(),
+                            1 if new_featured else 0,
+                            1 if new_visibility else 0,
+                            selected_id,
+                        ),
+                    )
+                st.success("Listing updated.")
+                st.rerun()
+
     c1 = conn.execute("SELECT COUNT(*) AS c FROM vendors").fetchone()["c"]
     c2 = conn.execute("SELECT COUNT(*) AS c FROM listings").fetchone()["c"]
     c3 = conn.execute("SELECT COUNT(*) AS c FROM banner_ads").fetchone()["c"]
@@ -605,25 +724,6 @@ def admin_panel_tab() -> None:
     m3.metric("Banners", c3)
     m4.metric("Ratings", c4)
 
-    st.markdown("### Manage Listings")
-    listings = conn.execute(
-        """
-        SELECT l.id, l.title, l.category, l.price, l.location, v.name AS vendor_name
-        FROM listings l
-        JOIN vendors v ON v.id = l.vendor_id
-        ORDER BY l.created_at DESC
-        """
-    ).fetchall()
-    if listings:
-        st.dataframe(pd.DataFrame([dict(x) for x in listings]), use_container_width=True)
-        listing_id_to_delete = st.text_input("Listing ID to delete")
-        if st.button("Delete Listing"):
-            if listing_id_to_delete.strip():
-                with conn:
-                    conn.execute("DELETE FROM listings WHERE id=?", (listing_id_to_delete.strip(),))
-                st.success("Listing deleted (if it existed).")
-                st.rerun()
-
     if st.button("Lock Admin"):
         st.session_state.is_admin = False
         st.success("Admin locked.")
@@ -631,6 +731,7 @@ def admin_panel_tab() -> None:
 
 
 init_db()
+ensure_listings_visibility_column()
 ensure_session()
 cleanup_expired()
 seed_prelistings()
