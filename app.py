@@ -613,6 +613,8 @@ def admin_panel_tab() -> None:
         SELECT l.id,
                l.title,
                l.category,
+               l.item_condition,
+               l.description,
                l.price,
                l.location,
                l.featured,
