@@ -1,6 +1,7 @@
 import base64
 import datetime
 import hashlib
+import hmac
 import sqlite3
 import uuid
 
@@ -44,6 +45,7 @@ FREE_LIMIT = 4
 LISTING_EXPIRY_DAYS = 45
 FEATURED_DAYS = 7
 BANNER_DAYS = 7
+ADMIN_PASSWORD_HASH = "093637e073b29dd5a1fa6116724340442a9ec80e8f569eb3ea949063ad3e64a9"
 
 
 def get_conn() -> sqlite3.Connection:
@@ -122,6 +124,8 @@ def ensure_session() -> None:
         st.session_state.vendor_id = None
     if "show_help" not in st.session_state:
         st.session_state.show_help = True
+    if "is_admin" not in st.session_state:
+        st.session_state.is_admin = False
 
 
 def now() -> datetime.datetime:
@@ -142,6 +146,11 @@ def hash_pass(password: str) -> str:
 
 def verify_pass(password: str, stored_hash: str) -> bool:
     return hash_pass(password) == stored_hash
+
+
+def verify_admin_password(password: str) -> bool:
+    candidate = hash_pass(password)
+    return hmac.compare_digest(candidate, ADMIN_PASSWORD_HASH)
 
 
 def clean_phone_for_uganda(raw: str) -> str:
@@ -185,6 +194,93 @@ def share_link(title: str) -> str:
     return "https://wa.me/?text=" + msg.replace(" ", "%20")
 
 
+def seed_prelistings() -> None:
+    seeds = [
+        {
+            "name": "Elijah Shoe World",
+            "phone": "0775000101",
+            "wa": "0775000101",
+            "title": "Elijah Shoe World",
+            "category": "Fashion",
+            "condition": "Brand New",
+            "description": "Quality men and women shoes, office shoes, sneakers, and school shoes at fair prices.",
+            "price": 85000.0,
+            "location": "Kampala",
+        },
+        {
+            "name": "Mafashid Collections",
+            "phone": "0775000102",
+            "wa": "0775000102",
+            "title": "Mafashid Collections",
+            "category": "Fashion",
+            "condition": "Brand New",
+            "description": "Trendy shoe collections with new arrivals weekly, including casual, official, and party footwear.",
+            "price": 95000.0,
+            "location": "Kampala",
+        },
+        {
+            "name": "Sarahs Touch Salon",
+            "phone": "0775000103",
+            "wa": "0775000103",
+            "title": "Sarahs Touch Salon",
+            "category": "Salon",
+            "condition": "Like New",
+            "description": "Professional salon services: braiding, hair treatment, manicure, pedicure, and bridal touch-ups.",
+            "price": 40000.0,
+            "location": "Kampala",
+        },
+    ]
+    with conn:
+        for item in seeds:
+            phone = clean_phone_for_uganda(item["phone"])
+            wa = clean_phone_for_uganda(item["wa"])
+            existing_vendor = conn.execute("SELECT id FROM vendors WHERE phone=?", (phone,)).fetchone()
+            if existing_vendor:
+                vendor_id = existing_vendor["id"]
+            else:
+                vendor_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT INTO vendors (id,name,phone,password_hash,whatsapp_phone,created_at) VALUES (?,?,?,?,?,?)",
+                    (
+                        vendor_id,
+                        item["name"],
+                        phone,
+                        hash_pass(str(uuid.uuid4())),
+                        wa,
+                        now_iso(),
+                    ),
+                )
+
+            existing_listing = conn.execute(
+                "SELECT id FROM listings WHERE vendor_id=? AND title=?",
+                (vendor_id, item["title"]),
+            ).fetchone()
+            if not existing_listing:
+                conn.execute(
+                    """
+                    INSERT INTO listings (
+                        id,vendor_id,title,category,item_condition,description,price,location,featured,created_at,expires_at,views,whatsapp_clicks,calls
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        str(uuid.uuid4()),
+                        vendor_id,
+                        item["title"],
+                        item["category"],
+                        item["condition"],
+                        item["description"],
+                        item["price"],
+                        item["location"],
+                        1,
+                        now_iso(),
+                        future_iso(LISTING_EXPIRY_DAYS),
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+
+
 def render_help_box() -> None:
     if not st.session_state.show_help:
         return
@@ -207,9 +303,9 @@ def render_help_box() -> None:
 
 def auth_tab() -> None:
     st.subheader("Sign up or Log in")
-    login_col, signup_col = st.columns(2)
+    login_tab, signup_tab = st.tabs(["Log in", "Sign up"])
 
-    with signup_col:
+    with signup_tab:
         st.markdown("### Create account")
         s_name = st.text_input("Business Name", key="signup_name")
         s_phone = st.text_input("Login Phone", key="signup_phone")
@@ -239,7 +335,7 @@ def auth_tab() -> None:
             except sqlite3.IntegrityError:
                 st.error("Phone already exists. Try logging in.")
 
-    with login_col:
+    with login_tab:
         st.markdown("### Log in")
         l_phone = st.text_input("Phone", key="login_phone")
         l_password = st.text_input("Password", type="password", key="login_pass")
@@ -294,7 +390,7 @@ def create_listing_tab(vendor: sqlite3.Row | None) -> None:
 
     with st.form("create_listing", clear_on_submit=True):
         title = st.text_input("Title")
-        category = st.selectbox("Category", ["Electronics", "Fashion", "Vehicles", "Property", "Home", "Services", "Other"])
+        category = st.selectbox("Category", ["Electronics", "Fashion", "Salon", "Vehicles", "Property", "Home", "Services", "Other"])
         item_condition = st.selectbox("Condition", ["Brand New", "Like New", "Used", "Refurbished"])
         price = st.number_input("Price (UGX)", min_value=0.0, step=1000.0)
         location = st.text_input("Location")
@@ -485,9 +581,59 @@ def ratings_tab(vendor: sqlite3.Row | None) -> None:
         st.dataframe(pd.DataFrame([dict(x) for x in rep]), use_container_width=True)
 
 
+def admin_panel_tab() -> None:
+    st.subheader("Admin Panel")
+    if not st.session_state.is_admin:
+        st.warning("Admin access required.")
+        pwd = st.text_input("Admin password", type="password")
+        if st.button("Unlock Admin"):
+            if verify_admin_password(pwd):
+                st.session_state.is_admin = True
+                st.success("Admin unlocked.")
+                st.rerun()
+            else:
+                st.error("Invalid admin password.")
+        return
+
+    c1 = conn.execute("SELECT COUNT(*) AS c FROM vendors").fetchone()["c"]
+    c2 = conn.execute("SELECT COUNT(*) AS c FROM listings").fetchone()["c"]
+    c3 = conn.execute("SELECT COUNT(*) AS c FROM banner_ads").fetchone()["c"]
+    c4 = conn.execute("SELECT COUNT(*) AS c FROM ratings").fetchone()["c"]
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Vendors", c1)
+    m2.metric("Listings", c2)
+    m3.metric("Banners", c3)
+    m4.metric("Ratings", c4)
+
+    st.markdown("### Manage Listings")
+    listings = conn.execute(
+        """
+        SELECT l.id, l.title, l.category, l.price, l.location, v.name AS vendor_name
+        FROM listings l
+        JOIN vendors v ON v.id = l.vendor_id
+        ORDER BY l.created_at DESC
+        """
+    ).fetchall()
+    if listings:
+        st.dataframe(pd.DataFrame([dict(x) for x in listings]), use_container_width=True)
+        listing_id_to_delete = st.text_input("Listing ID to delete")
+        if st.button("Delete Listing"):
+            if listing_id_to_delete.strip():
+                with conn:
+                    conn.execute("DELETE FROM listings WHERE id=?", (listing_id_to_delete.strip(),))
+                st.success("Listing deleted (if it existed).")
+                st.rerun()
+
+    if st.button("Lock Admin"):
+        st.session_state.is_admin = False
+        st.success("Admin locked.")
+        st.rerun()
+
+
 init_db()
 ensure_session()
 cleanup_expired()
+seed_prelistings()
 active_vendor = get_vendor(st.session_state.vendor_id)
 
 st.markdown(
@@ -507,10 +653,9 @@ if st.sidebar.button("❓ Help"):
     st.rerun()
 
 st.sidebar.markdown("### Navigation")
-page = st.sidebar.radio(
-    "Go to",
-    ["Marketplace", "Auth", "Create Listing", "Banner Ad", "Ratings", "Settings"],
-)
+pages = ["Marketplace", "Auth", "Create Listing", "Banner Ad", "Ratings", "Settings", "Admin Panel"]
+default_page = "Marketplace" if active_vendor else "Auth"
+page = st.sidebar.radio("Go to", pages, index=pages.index(default_page))
 
 if active_vendor:
     st.sidebar.success(f"Logged in: {active_vendor['name']}")
@@ -530,6 +675,8 @@ elif page == "Ratings":
     ratings_tab(active_vendor)
 elif page == "Settings":
     settings_tab(active_vendor)
+elif page == "Admin Panel":
+    admin_panel_tab()
 
 st.markdown("---")
 st.markdown('<div class="footer">© 2026 Biliwaka MarketPlace</div>', unsafe_allow_html=True)
