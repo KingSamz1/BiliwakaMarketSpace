@@ -16,19 +16,24 @@ if "user" not in st.session_state or st.session_state.user is None:
 apply_theme()
 render_topbar()
 
-# ── SIDEBAR: Page navigation only ──
+# ── Sidebar: All pages with on_click callbacks (the ONLY way switch_page works) ──
+def go_home(): st.switch_page("Home.py")
+def go_market(): st.switch_page("pages/1_🏪_MarketSpace.py")
+def go_dash(): st.switch_page("pages/2_📊_Dashboard.py")
+def go_ads(): st.switch_page("pages/3_📢_Advertising.py")
+def go_msgs(): st.switch_page("pages/4_💬_Messages.py")
+def go_banner(): st.switch_page("pages/5_🛒_Buy_Banner.py")
+def go_admin(): st.switch_page("pages/7_🛠️_Admin.py")
+
 with st.sidebar:
     st.markdown("### 📋 Pages")
-    if st.button("🏠 Home", use_container_width=True, key="m_home"):
-        st.session_state["goto"] = "Home.py"
-    if st.button("📦 MarketSpace", use_container_width=True, key="m_list"):
-        st.session_state["goto"] = "pages/1_🏪_MarketSpace.py"
-    if st.button("📊 Dashboard", use_container_width=True, key="m_dash"):
-        st.session_state["goto"] = "pages/2_📊_Dashboard.py"
-    if st.button("🚀 Advertising", use_container_width=True, key="m_adv"):
-        st.session_state["goto"] = "pages/3_📢_Advertising.py"
-    if st.button("💳 Payment", use_container_width=True, key="m_pay"):
-        st.session_state["goto"] = "pages/4_💳_Pay.py"
+    st.button("🏠 Home", use_container_width=True, on_click=go_home)
+    st.button("🏪 MarketSpace", use_container_width=True, on_click=go_market)
+    st.button("📊 Dashboard", use_container_width=True, on_click=go_dash)
+    st.button("📢 Advertising", use_container_width=True, on_click=go_ads)
+    st.button("💬 Messages", use_container_width=True, on_click=go_msgs)
+    st.button("🛒 Buy Banner", use_container_width=True, on_click=go_banner)
+    st.button("🛠️ Admin", use_container_width=True, on_click=go_admin)
 
 # ── MAIN CONTENT ──
 carousel_media = []
@@ -110,7 +115,6 @@ for i in range(0, len(db_items), 2):
 st.markdown("<div style='margin-bottom: 1.5rem;'></div>", unsafe_allow_html=True)
 
 info_left, info_right = st.columns(2)
-
 with info_left:
     st.markdown('<p style="font-size:1.1rem;font-weight:700;color:#e5e7eb;margin-bottom:0.8rem;">❤️ Why Biliwaka?</p>', unsafe_allow_html=True)
     st.markdown('''
@@ -124,15 +128,9 @@ with info_left:
         </div>
     </div>
     ''', unsafe_allow_html=True)
-
 with info_right:
     st.markdown('<p style="font-size:1.1rem;font-weight:700;color:#e5e7eb;margin-bottom:0.8rem;">🚀 How It Works</p>', unsafe_allow_html=True)
-    steps = [
-        ("1", "👤", "Create Account"),
-        ("2", "📸", "Post Your Ad"),
-        ("3", "💬", "Get Customers"),
-        ("4", "📈", "Grow Business"),
-    ]
+    steps = [("1", "👤", "Create Account"), ("2", "📸", "Post Your Ad"), ("3", "💬", "Get Customers"), ("4", "📈", "Grow Business")]
     step_cols = st.columns(4)
     for col, (num, icon, title) in zip(step_cols, steps):
         with col:
@@ -144,7 +142,6 @@ with info_right:
             </div>
             ''', unsafe_allow_html=True)
 
-# Stats at the bottom of main content
 with get_connection() as conn:
     total_users = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
     total_ads = conn.execute("SELECT COUNT(*) AS n FROM ads").fetchone()["n"]
@@ -152,21 +149,10 @@ st.markdown(f'''
 <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:20px;margin-top:1.5rem;">
     <div style="color:#e5e7eb;font-weight:700;font-size:1rem;margin-bottom:14px;">📊 Platform Stats</div>
     <div style="display:flex;gap:40px;">
-        <div>
-            <div style="color:#9ca3af;font-size:0.85rem;">Vendors</div>
-            <div style="color:#fbbf24;font-weight:800;font-size:1.4rem;">{total_users}</div>
-        </div>
-        <div>
-            <div style="color:#9ca3af;font-size:0.85rem;">Listings</div>
-            <div style="color:#25D366;font-weight:800;font-size:1.4rem;">{total_ads}</div>
-        </div>
+        <div><div style="color:#9ca3af;font-size:0.85rem;">Vendors</div><div style="color:#fbbf24;font-weight:800;font-size:1.4rem;">{total_users}</div></div>
+        <div><div style="color:#9ca3af;font-size:0.85rem;">Listings</div><div style="color:#25D366;font-weight:800;font-size:1.4rem;">{total_ads}</div></div>
     </div>
 </div>
 ''', unsafe_allow_html=True)
 
 render_footer()
-
-# ── PAGE SWITCH: Must be at the very top level, outside ALL blocks ──
-if "goto" in st.session_state:
-    target = st.session_state.pop("goto")
-    st.switch_page(target)
