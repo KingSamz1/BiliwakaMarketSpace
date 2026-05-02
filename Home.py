@@ -16,60 +16,19 @@ if "user" not in st.session_state or st.session_state.user is None:
 apply_theme()
 render_topbar()
 
-# ── SIDEBAR (uses st.sidebar — works on Streamlit Cloud, no switch_page crashes) ──
+# ── SIDEBAR: Page navigation only ──
 with st.sidebar:
-    st.markdown("### 📋 Menu")
+    st.markdown("### 📋 Pages")
     if st.button("🏠 Home", use_container_width=True, key="m_home"):
-        st.switch_page("Home.py")
-    if st.button("📦 Listings", use_container_width=True, key="m_list"):
-        st.switch_page("pages/1_🏪_MarketSpace.py")
+        st.session_state["goto"] = "Home.py"
+    if st.button("📦 MarketSpace", use_container_width=True, key="m_list"):
+        st.session_state["goto"] = "pages/1_🏪_MarketSpace.py"
     if st.button("📊 Dashboard", use_container_width=True, key="m_dash"):
-        st.switch_page("pages/2_📊_Dashboard.py")
+        st.session_state["goto"] = "pages/2_📊_Dashboard.py"
     if st.button("🚀 Advertising", use_container_width=True, key="m_adv"):
-        st.switch_page("pages/3_📢_Advertising.py")
+        st.session_state["goto"] = "pages/3_📢_Advertising.py"
     if st.button("💳 Payment", use_container_width=True, key="m_pay"):
-        st.switch_page("pages/4_💳_Pay.py")
-
-    st.markdown("---")
-    st.markdown('''
-    <div style="border-left:3px solid #25D366;padding-left:12px;">
-        <b>Become a Vendor</b><br>
-        Post products and services for free.<br><br>
-        <span style="background:#25D366;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:700;">4 FREE ADS / 7 DAYS</span>
-    </div>
-    ''', unsafe_allow_html=True)
-    st.markdown("<div style='margin:0.8rem 0;'></div>", unsafe_allow_html=True)
-    st.markdown('''
-    <div style="border-left:3px solid #3b82f6;padding-left:12px;">
-        <b>Follow Us</b><br>
-        WhatsApp • Facebook<br>
-        Instagram • TikTok
-    </div>
-    ''', unsafe_allow_html=True)
-
-    st.markdown("---")
-    with get_connection() as conn:
-        total_users = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
-        total_ads = conn.execute("SELECT COUNT(*) AS n FROM ads").fetchone()["n"]
-    st.markdown(f'''
-    <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px;">
-        <div style="color:#e5e7eb;font-weight:700;font-size:0.95rem;margin-bottom:12px;">📊 Platform Stats</div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#9ca3af;font-size:0.82rem;">Vendors</span>
-            <span style="color:#fbbf24;font-weight:800;font-size:0.95rem;">{total_users}</span>
-        </div>
-        <div style="height:4px;background:#1f2937;border-radius:2px;overflow:hidden;margin-bottom:14px;">
-            <div style="height:100%;width:{min(total_users * 2, 100)}%;background:linear-gradient(90deg,#fbbf24,#f59e0b);border-radius:2px;"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#9ca3af;font-size:0.82rem;">Listings</span>
-            <span style="color:#25D366;font-weight:800;font-size:0.95rem;">{total_ads}</span>
-        </div>
-        <div style="height:4px;background:#1f2937;border-radius:2px;overflow:hidden;">
-            <div style="height:100%;width:{min(total_ads * 2, 100)}%;background:linear-gradient(90deg,#25D366,#128C7E);border-radius:2px;"></div>
-        </div>
-    </div>
-    ''', unsafe_allow_html=True)
+        st.session_state["goto"] = "pages/4_💳_Pay.py"
 
 # ── MAIN CONTENT ──
 carousel_media = []
@@ -112,7 +71,6 @@ for idx, (icon, item, color) in enumerate(categories):
 st.markdown("<div style='margin-bottom: 1.5rem;'></div>", unsafe_allow_html=True)
 st.markdown('<p style="font-size:1.1rem;font-weight:700;color:#e5e7eb;margin-bottom:0.8rem;">⭐ Featured Listings</p>', unsafe_allow_html=True)
 
-# Fetch featured from DB
 db_items = []
 with get_connection() as conn:
     featured = conn.execute("SELECT a.*, u.full_name FROM ads a JOIN users u ON u.id = a.user_id WHERE a.is_active = 1 AND a.is_featured = 1 ORDER BY a.clicks DESC LIMIT 4").fetchall()
@@ -129,7 +87,6 @@ if not db_items:
         ("Solar Panel 250W", "UGX 350,000", "Katale, Wakiso", "https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&fit=crop&w=900&q=80", "Electronics", 0),
     ]
 
-# Render cards using native st elements — no raw HTML card bodies
 for i in range(0, len(db_items), 2):
     cols = st.columns(2)
     for j in range(2):
@@ -152,7 +109,6 @@ for i in range(0, len(db_items), 2):
 
 st.markdown("<div style='margin-bottom: 1.5rem;'></div>", unsafe_allow_html=True)
 
-# Why Biliwaka + How it works side by side
 info_left, info_right = st.columns(2)
 
 with info_left:
@@ -188,4 +144,29 @@ with info_right:
             </div>
             ''', unsafe_allow_html=True)
 
+# Stats at the bottom of main content
+with get_connection() as conn:
+    total_users = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+    total_ads = conn.execute("SELECT COUNT(*) AS n FROM ads").fetchone()["n"]
+st.markdown(f'''
+<div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:20px;margin-top:1.5rem;">
+    <div style="color:#e5e7eb;font-weight:700;font-size:1rem;margin-bottom:14px;">📊 Platform Stats</div>
+    <div style="display:flex;gap:40px;">
+        <div>
+            <div style="color:#9ca3af;font-size:0.85rem;">Vendors</div>
+            <div style="color:#fbbf24;font-weight:800;font-size:1.4rem;">{total_users}</div>
+        </div>
+        <div>
+            <div style="color:#9ca3af;font-size:0.85rem;">Listings</div>
+            <div style="color:#25D366;font-weight:800;font-size:1.4rem;">{total_ads}</div>
+        </div>
+    </div>
+</div>
+''', unsafe_allow_html=True)
+
 render_footer()
+
+# ── PAGE SWITCH: Must be at the very top level, outside ALL blocks ──
+if "goto" in st.session_state:
+    target = st.session_state.pop("goto")
+    st.switch_page(target)
