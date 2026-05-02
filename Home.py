@@ -16,23 +16,8 @@ if "user" not in st.session_state or st.session_state.user is None:
 apply_theme()
 render_topbar()
 
-# ── Sidebar navigation (no switch_page, no callbacks — just sets state) ──
-with st.sidebar:
-    st.markdown("#### 📋 Pages")
-    page_map = {
-        "🏠 Home": "Home.py",
-        "🏪 MarketSpace": "pages/1_🏪_MarketSpace.py",
-        "📊 Dashboard": "pages/2_📊_Dashboard.py",
-        "📢 Advertising": "pages/3_📢_Advertising.py",
-        "💬 Messages": "pages/4_💬_Messages.py",
-        "🛒 Buy Banner": "pages/5_🛒_Buy_Banner.py",
-        "🛠️ Admin": "pages/7_🛠️_Admin.py",
-    }
-    for label, path in page_map.items():
-        if st.button(label, key=f"nav_{path}", use_container_width=True):
-            st.session_state["nav_target"] = path
+# No nav code needed — Streamlit automatically shows all pages/ files in the sidebar
 
-# ── MAIN CONTENT ──
 carousel_media = []
 banner_path = Path(__file__).parent / "assets" / "banner.png"
 if banner_path.exists():
@@ -104,7 +89,7 @@ for i in range(0, len(db_items), 2):
                     st.markdown(f"<span style='background:#f59e0b20;color:#f59e0b;padding:2px 8px;border-radius:6px;font-size:0.7rem;font-weight:700;'>⭐ FEATURED</span> <span style='color:#6b7280;font-size:0.75rem;'>📁 {category}</span>{discount_tag}", unsafe_allow_html=True)
                     st.markdown(f"**{title}**")
                     st.markdown(f"<span style='color:#fbbf24;font-weight:800;font-size:1.15rem;'>{price}</span>", unsafe_allow_html=True)
-                    st.caption(f"📍 {location")
+                    st.caption(f"📍 {location}")
         else:
             with cols[j]:
                 st.empty()
@@ -153,11 +138,3 @@ st.markdown(f'''
 ''', unsafe_allow_html=True)
 
 render_footer()
-
-# ── Navigation: st.rerun() triggers script restart, __main__ block handles the jump ──
-if "nav_target" in st.session_state:
-    st.rerun()
-
-# ── THIS runs only on rerun triggered by nav, before any Streamlit rendering ──
-if __name__ != "__main__" and "nav_target" in st.session_state:
-    pass  # Handled by rerun
