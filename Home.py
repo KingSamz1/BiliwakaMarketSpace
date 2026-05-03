@@ -8,13 +8,12 @@ st.set_page_config(page_title="Biliwaka MarketSpace", page_icon="🛒", layout="
 init_session_defaults()
 init_db()
 
-# ── AUTO-DISCOVER ALL PAGES (no hardcoded filenames = no crash) ──
+# ── AUTO-DISCOVER ALL PAGES ──
 home_page = st.Page("Home.py", title="Home", icon="🏠")
 other_pages = []
 pages_dir = Path("pages")
 if pages_dir.exists():
     for f in sorted(pages_dir.glob("*.py")):
-        # Extract a title from filename: "1_MarketSpace.py" -> "MarketSpace"
         name = f.stem
         for sep in ["_", "-", "."]:
             parts = name.split(sep)
@@ -26,6 +25,10 @@ if other_pages:
     nav = st.navigation([home_page] + other_pages)
 else:
     nav = st.navigation([home_page])
+
+# ── FORCE SIDEBAR VISIBLE ──
+st.sidebar.title("Navigation")
+nav.run()
 
 # ── Session login from query params ──
 if "user" not in st.session_state or st.session_state.user is None:
@@ -55,7 +58,6 @@ with left_sidebar:
         if Path(page).exists():
             if st.button(label, use_container_width=True, key=key): st.switch_page(page)
         else:
-            # Fallback: try finding by number prefix if emoji name doesn't match
             num = page.split("_")[0].split("/")[-1] if "_" in page else ""
             if num:
                 found = list(pages_dir.glob(f"{num}_*.py")) if pages_dir.exists() else []
@@ -149,7 +151,12 @@ with center:
     for i, (title, price, location, image_url, category, discount) in enumerate(db_items):
         discount_html = ""
         if discount and discount > 0:
-            discount_html = f'<div style="position:absolute;top:10px;right:10px;background:#ef4444;color:white;padding:3px 10px;border-radius:20px;font-size:0.7rem;font-weight:800;">-{discount}%</div>'
+            discount_html = f'<div style="position:absolute;top:10px;right:10px;background:#ef4444;color:white;padding:3px 10px;border-radius:20px;font-size:0.7rem;font-weight:800;">-{discount:.0f}%</div>'
+        img_html = ''
+        if image_url:
+            img_html = f'<img src="{image_url}" style="width:100%;height:200px;object-fit:cover;">'
+        else:
+            img_html = '<div style="width:100%;height:200px;background:#1f2937;display:flex;align-items:center;justify-content:center;color:#4b5563;font-size:2rem;">🖼️</div>'
         with cards[i % 2]:
             st.markdown(f'''
             <div style="background:#111827;border-radius:12px;border:1px solid #1f2937;overflow:hidden;position:relative;transition:all 0.2s;cursor:pointer;"
@@ -157,7 +164,7 @@ with center:
                  onmouseout="this.style.borderColor='#1f2937';this.style.boxShadow='none'">
                 <div style="position:relative;">
                     {discount_html}
-                    {"<img src='" + image_url + "' style='width:100%;height:200px;object-fit:cover;' onerror=\"this.style.display='none'\">" if image_url else '<div style="width:100%;height:200px;background:#1f2937;display:flex;align-items:center;justify-content:center;color:#4b5563;font-size:2rem;">🖼️</div>'}
+                    {img_html}
                 </div>
                 <div style="padding:14px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
