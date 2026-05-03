@@ -15,7 +15,7 @@ if "user" not in st.session_state or st.session_state.user is None:
         st.session_state.user = {"id": int(params["id"]), "role": params["role"]}
         st.session_state.role = params["role"]
 
-# ── REGISTER ALL PAGES (Matches your exact files in pages/) ──
+# ── REGISTER ALL PAGES (Matches your exact files) ──
 all_page_paths = [
     "Home.py",
     "pages/1_🏪_MarketSpace.py",
@@ -33,10 +33,10 @@ for p in all_page_paths:
     if Path(p).exists():
         valid_pages.append(st.Page(p))
 
-# Only show Admin page if the logged-in user is actually an admin
+# Hide Admin page from non-admins using the correct .path attribute
 is_admin = st.session_state.get("role") == "admin"
 if not is_admin:
-    valid_pages = [p for p in valid_pages if "Admin" not in p.page_path]
+    valid_pages = [p for p in valid_pages if "Admin" not in p.path]
 
 nav = st.navigation(valid_pages)
 
@@ -50,25 +50,23 @@ left_sidebar, center, right_sidebar = layout
 with left_sidebar:
     st.markdown('<div class="block"><b>Quick Menu</b></div>', unsafe_allow_html=True)
     
-    # Build menu from actual existing files
+    # Use st.link_button for sub-page navigation (st.switch_page crashes if used inside the main entry file)
     menu_items = [
-        ("🏠 Home", "Home.py", "m_home"),
-        ("📦 Listings", "pages/1_🏪_MarketSpace.py", "m_list"),
-        ("📊 Dashboard", "pages/2_📊_Dashboard.py", "m_dash"),
-        ("💬 Messages", "pages/5_💬_Messages.py", "m_msg"),
-        ("🚀 Advertising", "pages/3_📢_Advertising.py", "m_adv"),
-        ("💳 Payment", "pages/4_💳_Pay.py", "m_pay"),
+        ("📦 Listings", "pages/1_🏪_MarketSpace.py"),
+        ("📊 Dashboard", "pages/2_📊_Dashboard.py"),
+        ("💬 Messages", "pages/5_💬_Messages.py"),
+        ("🚀 Advertising", "pages/3_📢_Advertising.py"),
+        ("💳 Payment", "pages/4_💳_Pay.py"),
     ]
     
-    for label, page, key in menu_items:
+    for label, page in menu_items:
         if Path(page).exists():
-            if st.button(label, use_container_width=True, key=key): st.switch_page(page)
+            st.link_button(label, f"/{page}", use_container_width=True)
 
     # Show Admin button ONLY if user is admin
     if is_admin and Path("pages/7_🛠️_Admin.py").exists():
         st.markdown("<div style='margin:0.5rem 0;'></div>", unsafe_allow_html=True)
-        if st.button("🛠️ Admin Panel", use_container_width=True, key="m_admin", type="secondary"): 
-            st.switch_page("pages/7_🛠️_Admin.py")
+        st.link_button("🛠️ Admin Panel", "/pages/7_🛠️_Admin.py", use_container_width=True, type="secondary")
 
     st.markdown("<div style='margin-bottom: 0.5rem;'></div>", unsafe_allow_html=True)
     st.markdown('''
