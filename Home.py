@@ -8,28 +8,6 @@ st.set_page_config(page_title="Biliwaka MarketSpace", page_icon="🛒", layout="
 init_session_defaults()
 init_db()
 
-# ── AUTO-DISCOVER ALL PAGES ──
-home_page = st.Page("Home.py", title="Home", icon="🏠")
-other_pages = []
-pages_dir = Path("pages")
-if pages_dir.exists():
-    for f in sorted(pages_dir.glob("*.py")):
-        name = f.stem
-        for sep in ["_", "-", "."]:
-            parts = name.split(sep)
-            if len(parts) > 1:
-                name = sep.join(parts[1:])
-                break
-        other_pages.append(st.Page(str(f), title=name))
-if other_pages:
-    nav = st.navigation([home_page] + other_pages)
-else:
-    nav = st.navigation([home_page])
-
-# ── FORCE SIDEBAR VISIBLE ──
-st.sidebar.title("Navigation")
-nav.run()
-
 # ── Session login from query params ──
 if "user" not in st.session_state or st.session_state.user is None:
     params = st.query_params
@@ -55,12 +33,13 @@ with left_sidebar:
         ("💳 Payment", "pages/4_💳_Pay.py", "m_pay"),
     ]
     for label, page, key in menu_items:
+        # Try exact path first, then fallback to number prefix
         if Path(page).exists():
             if st.button(label, use_container_width=True, key=key): st.switch_page(page)
         else:
             num = page.split("_")[0].split("/")[-1] if "_" in page else ""
             if num:
-                found = list(pages_dir.glob(f"{num}_*.py")) if pages_dir.exists() else []
+                found = list(Path("pages").glob(f"{num}_*.py"))
                 if found:
                     if st.button(label, use_container_width=True, key=key): st.switch_page(str(found[0]))
 
