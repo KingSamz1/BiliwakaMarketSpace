@@ -15,10 +15,35 @@ if "user" not in st.session_state or st.session_state.user is None:
         st.session_state.user = {"id": int(params["id"]), "role": params["role"]}
         st.session_state.role = params["role"]
 
-# NO st.navigation() — it renders to the native sidebar which your CSS hides.
-# Streamlit auto-discovers pages/ folder for st.switch_page() to work.
-
 is_admin = st.session_state.get("role") == "admin"
+
+# ── REGISTER ALL PAGES ──
+# In Streamlit 1.36+, st.switch_page() NEEDS this to function.
+# It renders to the native sidebar, but your CSS hides that sidebar, 
+# so users only see your custom left sidebar below.
+all_page_paths = [
+    "Home.py",
+    "pages/1_🏪_MarketSpace.py",
+    "pages/2_📊_Dashboard.py",
+    "pages/3_📢_Advertising.py",
+    "pages/4_💳_Pay.py",
+    "pages/5_💬_Messages.py",
+    "pages/6_👤_Profile.py",
+    "pages/7_🛠️_Admin.py",
+    "pages/8_🛒_Buy_Banner.py",
+]
+
+# Filter out Admin page from the string list BEFORE creating st.Page objects
+if not is_admin:
+    all_page_paths = [p for p in all_page_paths if "Admin" not in p]
+
+valid_pages = []
+for p in all_page_paths:
+    if Path(p).exists():
+        valid_pages.append(st.Page(p))
+
+# This initializes the routing engine (fixes the StreamlitAPIException)
+nav = st.navigation(valid_pages)
 
 apply_theme()
 render_topbar()
@@ -30,14 +55,14 @@ left_sidebar, center, right_sidebar = layout
 with left_sidebar:
     st.markdown('<div class="block"><b>Quick Menu</b></div>', unsafe_allow_html=True)
     
-    if st.button("🏠 Home", use_container_width=True, key="m_home"): st.switch_page("Home.py")
+    # These now work because st.navigation() is initialized above
     if st.button("📦 Listings", use_container_width=True, key="m_list"): st.switch_page("pages/1_🏪_MarketSpace.py")
     if st.button("📊 Dashboard", use_container_width=True, key="m_dash"): st.switch_page("pages/2_📊_Dashboard.py")
     if st.button("💬 Messages", use_container_width=True, key="m_msg"): st.switch_page("pages/5_💬_Messages.py")
     if st.button("🚀 Advertising", use_container_width=True, key="m_adv"): st.switch_page("pages/3_📢_Advertising.py")
     if st.button("💳 Payment", use_container_width=True, key="m_pay"): st.switch_page("pages/4_💳_Pay.py")
 
-    # Admin button — only visible to admins
+    # Admin button only visible to admins
     if is_admin:
         st.markdown("<div style='margin:0.5rem 0;'></div>", unsafe_allow_html=True)
         if st.button("🛠️ Admin Panel", use_container_width=True, key="m_admin", type="secondary"): 
