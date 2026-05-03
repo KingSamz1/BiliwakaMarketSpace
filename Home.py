@@ -3,7 +3,7 @@ from pathlib import Path
 from database import get_connection, init_db
 from utils import apply_theme, init_session_defaults, render_footer, render_topbar, render_carousel
 
-# ── 1. GLOBAL SETUP (Must be at the very top) ──
+# ── 1. GLOBAL SETUP ──
 st.set_page_config(page_title="Biliwaka MarketSpace", page_icon="🛒", layout="wide")
 
 init_session_defaults()
@@ -17,7 +17,7 @@ if "user" not in st.session_state or st.session_state.user is None:
 
 is_admin = st.session_state.get("role") == "admin"
 
-# ── 2. HOME PAGE UI (Wrapped in a function) ──
+# ── 2. HOME PAGE UI ──
 def home():
     apply_theme()
     render_topbar()
@@ -28,17 +28,17 @@ def home():
     with left_sidebar:
         st.markdown('<div class="block"><b>Quick Menu</b></div>', unsafe_allow_html=True)
         
-        # These now work because nav.run() initializes the routing engine
-        if st.button("📦 Listings", use_container_width=True, key="m_list"): st.switch_page("pages/1_🏪_MarketSpace.py")
-        if st.button("📊 Dashboard", use_container_width=True, key="m_dash"): st.switch_page("pages/2_📊_Dashboard.py")
-        if st.button("💬 Messages", use_container_width=True, key="m_msg"): st.switch_page("pages/5_💬_Messages.py")
-        if st.button("🚀 Advertising", use_container_width=True, key="m_adv"): st.switch_page("pages/3_📢_Advertising.py")
-        if st.button("💳 Payment", use_container_width=True, key="m_pay"): st.switch_page("pages/4_💳_Pay.py")
+        # PASS THE PAGE OBJECTS, NOT STRINGS!
+        if st.button("📦 Listings", use_container_width=True, key="m_list"): st.switch_page(pages["listings"])
+        if st.button("📊 Dashboard", use_container_width=True, key="m_dash"): st.switch_page(pages["dashboard"])
+        if st.button("💬 Messages", use_container_width=True, key="m_msg"): st.switch_page(pages["messages"])
+        if st.button("🚀 Advertising", use_container_width=True, key="m_adv"): st.switch_page(pages["advertising"])
+        if st.button("💳 Payment", use_container_width=True, key="m_pay"): st.switch_page(pages["pay"])
 
-        if is_admin:
+        if is_admin and "admin" in pages:
             st.markdown("<div style='margin:0.5rem 0;'></div>", unsafe_allow_html=True)
             if st.button("🛠️ Admin Panel", use_container_width=True, key="m_admin", type="secondary"): 
-                st.switch_page("pages/7_🛠️_Admin.py")
+                st.switch_page(pages["admin"])
 
         st.markdown("<div style='margin-bottom: 0.5rem;'></div>", unsafe_allow_html=True)
         st.markdown('''
@@ -225,27 +225,29 @@ def home():
     render_footer()
 
 
-# ── 3. REGISTER PAGES & RUN (The magic 1.56.0 line) ──
-all_page_paths = [
-    "pages/1_🏪_MarketSpace.py",
-    "pages/2_📊_Dashboard.py",
-    "pages/3_📢_Advertising.py",
-    "pages/4_💳_Pay.py",
-    "pages/5_💬_Messages.py",
-    "pages/6_👤_Profile.py",
-    "pages/7_🛠️_Admin.py",
-    "pages/8_🛒_Buy_Banner.py",
+# ── 3. REGISTER PAGES AS OBJECTS & RUN ──
+pages = {
+    "home": st.Page(home, title="Home", icon="🏠")
+}
+
+page_paths = [
+    ("listings", "pages/1_🏪_MarketSpace.py"),
+    ("dashboard", "pages/2_📊_Dashboard.py"),
+    ("advertising", "pages/3_📢_Advertising.py"),
+    ("pay", "pages/4_💳_Pay.py"),
+    ("messages", "pages/5_💬_Messages.py"),
+    ("profile", "pages/6_👤_Profile.py"),
+    ("admin", "pages/7_🛠️_Admin.py"),
+    ("banner", "pages/8_🛒_Buy_Banner.py"),
 ]
 
-# Hide admin from non-admins BEFORE registering
+for key, path in page_paths:
+    if Path(path).exists():
+        pages[key] = st.Page(path)
+
+# Hide admin for non-admins
 if not is_admin:
-    all_page_paths = [p for p in all_page_paths if "Admin" not in p]
+    pages.pop("admin", None)
 
-valid_pages = [st.Page(home, title="Home", icon="🏠")]
-
-for p in all_page_paths:
-    if Path(p).exists():
-        valid_pages.append(st.Page(p))
-
-nav = st.navigation(valid_pages)
+nav = st.navigation(list(pages.values()))
 nav.run()
