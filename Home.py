@@ -15,7 +15,7 @@ if "user" not in st.session_state or st.session_state.user is None:
         st.session_state.user = {"id": int(params["id"]), "role": params["role"]}
         st.session_state.role = params["role"]
 
-# ── REGISTER ALL PAGES (Matches your exact files) ──
+# ── REGISTER ALL PAGES ──
 all_page_paths = [
     "Home.py",
     "pages/1_🏪_MarketSpace.py",
@@ -28,15 +28,15 @@ all_page_paths = [
     "pages/8_🛒_Buy_Banner.py",
 ]
 
+# Filter out Admin from the STRING list BEFORE creating st.Page objects
+is_admin = st.session_state.get("role") == "admin"
+if not is_admin:
+    all_page_paths = [p for p in all_page_paths if "Admin" not in p]
+
 valid_pages = []
 for p in all_page_paths:
     if Path(p).exists():
         valid_pages.append(st.Page(p))
-
-# Hide Admin page from non-admins using the correct .path attribute
-is_admin = st.session_state.get("role") == "admin"
-if not is_admin:
-    valid_pages = [p for p in valid_pages if "Admin" not in p.path]
 
 nav = st.navigation(valid_pages)
 
@@ -50,7 +50,6 @@ left_sidebar, center, right_sidebar = layout
 with left_sidebar:
     st.markdown('<div class="block"><b>Quick Menu</b></div>', unsafe_allow_html=True)
     
-    # Use st.link_button for sub-page navigation (st.switch_page crashes if used inside the main entry file)
     menu_items = [
         ("📦 Listings", "pages/1_🏪_MarketSpace.py"),
         ("📊 Dashboard", "pages/2_📊_Dashboard.py"),
@@ -63,7 +62,6 @@ with left_sidebar:
         if Path(page).exists():
             st.link_button(label, f"/{page}", use_container_width=True)
 
-    # Show Admin button ONLY if user is admin
     if is_admin and Path("pages/7_🛠️_Admin.py").exists():
         st.markdown("<div style='margin:0.5rem 0;'></div>", unsafe_allow_html=True)
         st.link_button("🛠️ Admin Panel", "/pages/7_🛠️_Admin.py", use_container_width=True, type="secondary")
