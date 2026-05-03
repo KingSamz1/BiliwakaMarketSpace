@@ -8,34 +8,24 @@ st.set_page_config(page_title="Biliwaka MarketSpace", page_icon="🛒", layout="
 init_session_defaults()
 init_db()
 
-# ── REGISTER ALL PAGES (This makes them appear in sidebar & enables st.switch_page) ──
-pages = [
-    st.Page("Home.py", title="Home", icon="🏠"),
-    st.Page("pages/1_🏪_MarketSpace.py", title="MarketSpace", icon="🏪"),
-    st.Page("pages/2_📊_Dashboard.py", title="Dashboard", icon="📊"),
-    st.Page("pages/3_📢_Advertising.py", title="Advertising", icon="📢"),
-    st.Page("pages/4_💳_Pay.py", title="Payment", icon="💳"),
-    st.Page("pages/4_💬_Messages.py", title="Messages", icon="💬"),
-    st.Page("pages/5_🛒_Buy_Banner.py", title="Buy Banner", icon="🛒"),
-    st.Page("pages/6_👤_Profile.py", title="Profile", icon="👤"),
-    st.Page("pages/7_🛠️_Admin.py", title="Admin", icon="🛠️"),
-]
-# Check which pages actually exist on disk so we don't crash on missing files
-valid_pages = []
-for p in pages:
-    if Path(p.page_path).exists():
-        valid_pages.append(p)
-    else:
-        # Try common alternative naming if file not found
-        alt = p.page_path.replace("pages/", "pages/").replace(".py", ".py")
-        if Path(alt).exists():
-            valid_pages.append(p)
-
-if valid_pages:
-    nav = st.navigation(valid_pages)
+# ── AUTO-DISCOVER ALL PAGES (no hardcoded filenames = no crash) ──
+home_page = st.Page("Home.py", title="Home", icon="🏠")
+other_pages = []
+pages_dir = Path("pages")
+if pages_dir.exists():
+    for f in sorted(pages_dir.glob("*.py")):
+        # Extract a title from filename: "1_MarketSpace.py" -> "MarketSpace"
+        name = f.stem
+        for sep in ["_", "-", "."]:
+            parts = name.split(sep)
+            if len(parts) > 1:
+                name = sep.join(parts[1:])
+                break
+        other_pages.append(st.Page(str(f), title=name))
+if other_pages:
+    nav = st.navigation([home_page] + other_pages)
 else:
-    # Fallback if no pages found - at least show home
-    nav = st.navigation([st.Page("Home.py", title="Home", icon="🏠")])
+    nav = st.navigation([home_page])
 
 # ── Session login from query params ──
 if "user" not in st.session_state or st.session_state.user is None:
@@ -64,6 +54,13 @@ with left_sidebar:
     for label, page, key in menu_items:
         if Path(page).exists():
             if st.button(label, use_container_width=True, key=key): st.switch_page(page)
+        else:
+            # Fallback: try finding by number prefix if emoji name doesn't match
+            num = page.split("_")[0].split("/")[-1] if "_" in page else ""
+            if num:
+                found = list(pages_dir.glob(f"{num}_*.py")) if pages_dir.exists() else []
+                if found:
+                    if st.button(label, use_container_width=True, key=key): st.switch_page(str(found[0]))
 
     st.markdown("<div style='margin-bottom: 0.5rem;'></div>", unsafe_allow_html=True)
     st.markdown('''
