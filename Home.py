@@ -17,12 +17,14 @@ if "user" not in st.session_state or st.session_state.user is None:
 
 is_admin = st.session_state.get("role") == "admin"
 
-# ── 2. DISCOVER PAGES (Keep names in a simple list to avoid Streamlit crashes) ──
+# ── 2. DISCOVER PAGES ──
 page_objects = []
 page_titles = []
+debug_path = "Unknown"
 
 base_dir = Path(__file__).parent.resolve()
 pages_dir = base_dir / "pages"
+debug_path = str(pages_dir)
 
 if pages_dir.exists():
     for f in sorted(pages_dir.glob("*.py")):
@@ -31,12 +33,10 @@ if pages_dir.exists():
         
         title = f.stem.replace("_", " ").title()
         
-        # Hide admin from non-admins
         if "admin" in title.lower():
             if not is_admin:
                 continue
                 
-        # Save the absolute path string
         abs_path = str(f.resolve())
         page_objects.append(st.Page(abs_path))
         page_titles.append(title)
@@ -53,10 +53,14 @@ def home_func():
     with left_sidebar:
         st.markdown('<div class="block"><b>Quick Menu</b></div>', unsafe_allow_html=True)
         
-        # Draw buttons using our safe lists
-        for i, obj in enumerate(page_objects):
-            if st.button(f"🚀 {page_titles[i]}", use_container_width=True, key=f"nav_{i}"):
-                st.switch_page(obj)
+        # --- DEBUG LINE: This will tell us exactly why it's empty ---
+        if not page_objects:
+            st.error(f"0 pages found in: {debug_path}")
+        else:
+            for i, obj in enumerate(page_objects):
+                if st.button(f"🚀 {page_titles[i]}", use_container_width=True, key=f"nav_{i}"):
+                    st.switch_page(obj)
+        # -----------------------------------------------------------
 
         st.markdown("<div style='margin-bottom: 0.5rem;'></div>", unsafe_allow_html=True)
         st.markdown('''
