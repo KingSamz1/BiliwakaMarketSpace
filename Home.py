@@ -17,7 +17,32 @@ if "user" not in st.session_state or st.session_state.user is None:
 
 is_admin = st.session_state.get("role") == "admin"
 
-# ── 2. HOME PAGE UI ──
+# ── 2. DISCOVER PAGES (Keep names in a simple list to avoid Streamlit crashes) ──
+page_objects = []
+page_titles = []
+
+base_dir = Path(__file__).parent.resolve()
+pages_dir = base_dir / "pages"
+
+if pages_dir.exists():
+    for f in sorted(pages_dir.glob("*.py")):
+        if f.name.startswith("_"):
+            continue
+        
+        title = f.stem.replace("_", " ").title()
+        
+        # Hide admin from non-admins
+        if "admin" in title.lower():
+            if not is_admin:
+                continue
+                
+        # Save the absolute path string
+        abs_path = str(f.resolve())
+        page_objects.append(st.Page(abs_path))
+        page_titles.append(title)
+
+
+# ── 3. HOME PAGE UI ──
 def home_func():
     apply_theme()
     render_topbar()
@@ -28,13 +53,10 @@ def home_func():
     with left_sidebar:
         st.markdown('<div class="block"><b>Quick Menu</b></div>', unsafe_allow_html=True)
         
-        # Dynamically creates a button for EVERY file in your pages/ folder
-        for page_obj in dynamic_pages:
-            # Extract clean name from the absolute path
-            nice_name = Path(page_obj.page_path if hasattr(page_obj, 'page_path') else str(page_obj)).stem.replace("_", " ").replace("-", " ").title()
-            
-            if st.button(f"🚀 {nice_name}", use_container_width=True, key=f"nav_{nice_name}"):
-                st.switch_page(page_obj)
+        # Draw buttons using our safe lists
+        for i, obj in enumerate(page_objects):
+            if st.button(f"🚀 {page_titles[i]}", use_container_width=True, key=f"nav_{i}"):
+                st.switch_page(obj)
 
         st.markdown("<div style='margin-bottom: 0.5rem;'></div>", unsafe_allow_html=True)
         st.markdown('''
@@ -220,32 +242,8 @@ def home_func():
 
     render_footer()
 
-# ── 3. DYNAMIC REGISTRATION & RUN ──
-dynamic_pages = []
 
-# USE __file__ TO FORCE ABSOLUTE PATHS (Fixes the Streamlit Cloud directory issue)
-base_dir = Path(__file__).parent.resolve()
-pages_dir = base_dir / "pages"
-
-if pages_dir.exists():
-    for file_path in sorted(pages_dir.glob("*.py")):
-        # Ignore cache files like __pycache__
-        if file_path.name.startswith("_"):
-            continue
-        
-        # .resolve() forces the full absolute path so Streamlit can NEVER get lost
-        abs_path = str(file_path.resolve())
-        page_obj = st.Page(abs_path)
-        
-        # Hide admin page completely from non-admins
-        if "admin" in file_path.name.lower():
-            if is_admin:
-                dynamic_pages.append(page_obj)
-        else:
-            dynamic_pages.append(page_obj)
-
-# Add Home to the very front
-final_pages = [st.Page(home_func, title="Home", icon="🏠")] + dynamic_pages
-
+# ── 4. RUN APP ──
+final_pages = [st.Page(home_func, title="Home", icon="🏠")] + page_objects
 nav = st.navigation(final_pages)
 nav.run()
