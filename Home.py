@@ -18,7 +18,7 @@ if "user" not in st.session_state or st.session_state.user is None:
 is_admin = st.session_state.get("role") == "admin"
 
 # ── 2. HOME PAGE UI ──
-def home():
+def home_func():
     apply_theme()
     render_topbar()
 
@@ -28,16 +28,13 @@ def home():
     with left_sidebar:
         st.markdown('<div class="block"><b>Quick Menu</b></div>', unsafe_allow_html=True)
         
-        if st.button("📦 Listings", use_container_width=True, key="m_list"): st.switch_page(pages["listings"])
-        if st.button("📊 Dashboard", use_container_width=True, key="m_dash"): st.switch_page(pages["dashboard"])
-        if st.button("💬 Messages", use_container_width=True, key="m_msg"): st.switch_page(pages["messages"])
-        if st.button("🚀 Advertising", use_container_width=True, key="m_adv"): st.switch_page(pages["advertising"])
-        if st.button("💳 Payment", use_container_width=True, key="m_pay"): st.switch_page(pages["pay"])
-
-        if is_admin and "admin" in pages:
-            st.markdown("<div style='margin:0.5rem 0;'></div>", unsafe_allow_html=True)
-            if st.button("🛠️ Admin Panel", use_container_width=True, key="m_admin", type="secondary"): 
-                st.switch_page(pages["admin"])
+        # Dynamically creates a button for EVERY file in your pages/ folder
+        for page_obj in dynamic_pages:
+            # Extract clean name from the absolute path
+            nice_name = Path(page_obj.page_path if hasattr(page_obj, 'page_path') else str(page_obj)).stem.replace("_", " ").replace("-", " ").title()
+            
+            if st.button(f"🚀 {nice_name}", use_container_width=True, key=f"nav_{nice_name}"):
+                st.switch_page(page_obj)
 
         st.markdown("<div style='margin-bottom: 0.5rem;'></div>", unsafe_allow_html=True)
         st.markdown('''
@@ -223,30 +220,32 @@ def home():
 
     render_footer()
 
+# ── 3. DYNAMIC REGISTRATION & RUN ──
+dynamic_pages = []
 
-# ── 3. REGISTER PAGES AS OBJECTS & RUN ──
-pages = {
-    "home": st.Page(home, title="Home", icon="🏠")
-}
+# USE __file__ TO FORCE ABSOLUTE PATHS (Fixes the Streamlit Cloud directory issue)
+base_dir = Path(__file__).parent.resolve()
+pages_dir = base_dir / "pages"
 
-page_paths = [
-    ("listings", "pages/1_🏪_MarketSpace.py"),
-    ("dashboard", "pages/2_📊_Dashboard.py"),
-    ("advertising", "pages/3_📢_Advertising.py"),
-    ("pay", "pages/4_💳_Pay.py"),
-    ("messages", "pages/5_💬_Messages.py"),
-    ("profile", "pages/6_👤_Profile.py"),
-    ("admin", "pages/7_🛠️_Admin.py"),
-    ("banner", "pages/8_🛒_Buy_Banner.py"),
-]
+if pages_dir.exists():
+    for file_path in sorted(pages_dir.glob("*.py")):
+        # Ignore cache files like __pycache__
+        if file_path.name.startswith("_"):
+            continue
+        
+        # .resolve() forces the full absolute path so Streamlit can NEVER get lost
+        abs_path = str(file_path.resolve())
+        page_obj = st.Page(abs_path)
+        
+        # Hide admin page completely from non-admins
+        if "admin" in file_path.name.lower():
+            if is_admin:
+                dynamic_pages.append(page_obj)
+        else:
+            dynamic_pages.append(page_obj)
 
-# Force-registering all pages without Path.exists() to bypass Linux emoji filename bug
-for key, path in page_paths:
-    pages[key] = st.Page(path)
+# Add Home to the very front
+final_pages = [st.Page(home_func, title="Home", icon="🏠")] + dynamic_pages
 
-# Hide admin for non-admins
-if not is_admin:
-    pages.pop("admin", None)
-
-nav = st.navigation(list(pages.values()))
+nav = st.navigation(final_pages)
 nav.run()
