@@ -28,7 +28,6 @@ def home():
     with left_sidebar:
         st.markdown('<div class="block"><b>Quick Menu</b></div>', unsafe_allow_html=True)
         
-        # PASS THE PAGE OBJECTS, NOT STRINGS!
         if st.button("📦 Listings", use_container_width=True, key="m_list"): st.switch_page(pages["listings"])
         if st.button("📊 Dashboard", use_container_width=True, key="m_dash"): st.switch_page(pages["dashboard"])
         if st.button("💬 Messages", use_container_width=True, key="m_msg"): st.switch_page(pages["messages"])
@@ -241,9 +240,9 @@ page_paths = [
     ("banner", "pages/8_🛒_Buy_Banner.py"),
 ]
 
+# Force-registering all pages without Path.exists() to bypass Linux emoji filename bug
 for key, path in page_paths:
-    if Path(path).exists():
-        pages[key] = st.Page(path)
+    pages[key] = st.Page(path)
 
 # Hide admin for non-admins
 if not is_admin:
